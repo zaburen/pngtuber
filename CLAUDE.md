@@ -16,9 +16,11 @@ Public, cross-platform PNGTuber desktop app (Tauri 2 + SvelteKit/Svelte 5 + TS).
 - Overlay via localhost browser source = real alpha in OBS; window capture can't do alpha.
 - `beforeDevCommand` runs `npm run build` first because rust-embed needs `build/` to exist (build.rs also creates it empty).
 
-## Roadmap (user-approved 2026-08-23)
+## Roadmap (user-approved 2026-08-23, reshaped 2026-09-12)
 
-M1 shell + port ✔ → M2 hotkey/gamepad poses (`rdev`, `gilrs`) → M3 layered parts → M4 motion + profiles → M5 release (CI builds, README). Check in with user after each.
+M1 shell + port ✔ → M2a layer model (avatar = ordered layer stack; single layer = old behavior; poses become per-layer image swaps, which kills the overlay four-arms problem) → M2b global input + bindings (`rdev`, `gilrs`; binding = trigger → swap/show/hide layer; add About credit to UI) → M3 layer UX polish (reorder, offsets, static props) → M4 motion + profiles → M5 release (CI builds). Check in with user after each.
+
+Design rule: one data model (layer stack), one UI that grows — the simple user has a 1-layer stack and never sees layer vocabulary. No simple/advanced mode split.
 
 ## Conventions
 
