@@ -22,6 +22,14 @@ M1 shell + port ✔ → M2a layer model ✔ + per-layer variants ✔ (avatar = o
 
 Design rule: one data model (layer stack), one UI that grows — the simple user has a 1-layer stack and never sees layer vocabulary. No simple/advanced mode split.
 
+## Testing (agent-drivable)
+
+- `npm test` — vitest on the framework-free core (state machine, fallbacks, mergeProfile migrations). `cargo test` reserved for Rust logic as it grows.
+- Overlay: headless Chrome screenshot of `http://127.0.0.1:8737/` while the app runs.
+- Panel UI: launch dev with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`, then drive the real webview over CDP (`http://127.0.0.1:9223/json` → WebSocket → Runtime.evaluate / Page.captureScreenshot). Clicks real elements, screenshots without stealing window focus.
+- WS state: one-shot `new WebSocket('ws://127.0.0.1:8737/ws')` dump.
+- M2b input: global keyboard hooks receive SendInput-synthesized events — hotkeys testable. Gamepad + real mic stay manual (user).
+
 ## Conventions
 
 - Never commit user art. Placeholder art is drawn in code.
