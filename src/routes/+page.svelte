@@ -9,7 +9,16 @@
   import { Mic } from '$lib/mic';
   import { Renderer, RENDERER_CSS, placeholder } from '$lib/renderer';
   import * as backend from '$lib/backend';
-  import { FRAME_KEYS, OVERLAY_ORIGIN, mergeProfile, type FrameKey, type Profile } from '$lib/types';
+  import {
+    FRAME_KEYS,
+    OVERLAY_ORIGIN,
+    frameStorageKey,
+    mergeProfile,
+    newLayerId,
+    type FrameKey,
+    type Layer,
+    type Profile,
+  } from '$lib/types';
 
   let profile: Profile = $state(mergeProfile(null));
   let present: string[] = $state([]);
@@ -17,7 +26,7 @@
   let mics: MediaDeviceInfo[] = $state([]);
   let micRunning = $state(false);
   let micStatus = $state({ text: '', error: false });
-  let dragOver: FrameKey | null = $state(null);
+  let dragOver: string | null = $state(null);
   let profileDir = $state('');
   let copied = $state(false);
   let ready = $state(false);
@@ -27,6 +36,7 @@
   let meter: HTMLCanvasElement;
 
   const frameUrls = $derived(backend.frameUrls(present, frameVersion));
+  const multiLayer = $derived(profile.layers.length > 1);
 
   onMount(() => {
     let cleanup = () => {};
@@ -84,18 +94,22 @@
     avatar.emit(true);
   });
 
-  function slotAt(px: number, py: number): FrameKey | null {
+  function slotAt(px: number, py: number): string | null {
     const dpr = window.devicePixelRatio || 1;
     const el = document.elementFromPoint(px / dpr, py / dpr)?.closest<HTMLElement>('[data-slot]');
-    return (el?.dataset.slot as FrameKey) ?? null;
+    return el?.dataset.slot ?? null;
   }
 
-  async function pickFrame(key: FrameKey) {
+  function slotsFor(layer: Layer): FrameKey[] {
+    return layer.reactsToVoice ? [...FRAME_KEYS] : ['idle'];
+  }
+
+  async function pickFrame(key: string) {
     const file = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['png'] }] });
     if (typeof file === 'string') importFrame(key, file);
   }
 
-  async function importFrame(key: FrameKey, path: string) {
+  async function importFrame(key: string, path: string) {
     try {
       present = await backend.importFrame(key, path);
       frameVersion++;
@@ -105,10 +119,30 @@
     }
   }
 
-  async function removeFrame(key: FrameKey, ev: MouseEvent) {
+  async function removeFrame(key: string, ev: MouseEvent) {
     ev.stopPropagation();
     present = await backend.clearFrame(key);
     frameVersion++;
+  }
+
+  function addLayer() {
+    profile.layers.push({ id: newLayerId(), name: `layer ${profile.layers.length + 1}`, reactsToVoice: false, visible: true });
+  }
+
+  async function removeLayer(layer: Layer) {
+    for (const f of FRAME_KEYS) {
+      const key = frameStorageKey(layer.id, f);
+      if (frameUrls[key]) present = await backend.clearFrame(key);
+    }
+    profile.layers = profile.layers.filter((l) => l.id !== layer.id);
+    frameVersion++;
+  }
+
+  function moveLayer(layer: Layer, delta: number) {
+    const i = profile.layers.indexOf(layer);
+    const j = i + delta;
+    if (j < 0 || j >= profile.layers.length) return;
+    [profile.layers[i], profile.layers[j]] = [profile.layers[j], profile.layers[i]];
   }
 
   async function startMic() {
@@ -190,20 +224,46 @@
       <span class="val">{profile.mic.hold}</span></span></label>
 
     <h2>Frames</h2>
-    <div class="slots">
-      {#each FRAME_KEYS as k (k)}
-        <div class="slot" class:dragover={dragOver === k} data-slot={k}
-             role="button" tabindex="0" title="Click or drop an image"
-             onclick={() => pickFrame(k)} onkeydown={(e) => e.key === 'Enter' && pickFrame(k)}>
-          <img src={frameUrls[k] ?? placeholder(k)} alt="" class:pixelated={profile.look.pixelated}>
-          <div class="name">{k}{frameUrls[k] ? '' : ' (placeholder)'}</div>
-          {#if frameUrls[k]}
-            <button class="x" title="Remove" onclick={(e) => removeFrame(k, e)}>×</button>
-          {/if}
+    {#each profile.layers as layer, i (layer.id)}
+      <div class="layer" class:card={multiLayer}>
+        {#if multiLayer}
+          <div class="layer-head">
+            <input class="layer-name" bind:value={layer.name} title="Layer name">
+            <button class="icon" title="Bring forward" disabled={i === profile.layers.length - 1}
+                    onclick={() => moveLayer(layer, 1)}>▲</button>
+            <button class="icon" title="Send back" disabled={i === 0}
+                    onclick={() => moveLayer(layer, -1)}>▼</button>
+            <button class="icon" title="Delete layer and its images" onclick={() => removeLayer(layer)}>×</button>
+          </div>
+          <label class="row"><input type="checkbox" bind:checked={layer.visible}> Visible</label>
+          <label class="row"><input type="checkbox" bind:checked={layer.reactsToVoice}> Reacts to voice (talking/blink frames)</label>
+        {/if}
+        <div class="slots">
+          {#each slotsFor(layer) as k (k)}
+            {@const key = frameStorageKey(layer.id, k)}
+            <div class="slot" class:dragover={dragOver === key} data-slot={key}
+                 role="button" tabindex="0" title="Click or drop an image"
+                 onclick={() => pickFrame(key)} onkeydown={(e) => e.key === 'Enter' && pickFrame(key)}>
+              <img src={frameUrls[key] ?? placeholder(k)} alt="" class:pixelated={profile.look.pixelated}
+                   class:missing={!frameUrls[key] && multiLayer}>
+              <div class="name">{layer.reactsToVoice ? k : 'image'}{frameUrls[key] ? '' : multiLayer ? ' (empty)' : ' (placeholder)'}</div>
+              {#if frameUrls[key]}
+                <button class="x" title="Remove" onclick={(e) => removeFrame(key, e)}>×</button>
+              {/if}
+            </div>
+          {/each}
         </div>
-      {/each}
-    </div>
-    <p class="hint">Only <b>idle</b> is required. Missing blink/talking frames fall back automatically.</p>
+      </div>
+    {/each}
+    <button onclick={addLayer}>+ Add layer</button>
+    <p class="hint">
+      {#if multiLayer}
+        Layers draw bottom to top — later cards appear in front. Use the same canvas size for every image so layers line up.
+      {:else}
+        Only <b>idle</b> is required. Missing blink/talking frames fall back automatically.
+        Add layers for props, outfits, or parts you'll want to trigger separately.
+      {/if}
+    </p>
 
     <h2>Look</h2>
     <label>Scale
@@ -246,13 +306,19 @@
   input[type=range] { flex: 1; }
   select, button { width: 100%; padding: 5px; margin-top: 4px; background: #2a2d36; color: #d8dae0;
     border: 1px solid #444; border-radius: 4px; cursor: pointer; }
-  button:hover { border-color: #6ea8fe; }
+  button:hover:not(:disabled) { border-color: #6ea8fe; }
+  button:disabled { opacity: 0.4; cursor: default; }
   button.on { border-color: #4caf7d; color: #7fe0a8; }
   button.small { width: auto; margin-top: 0; }
   .val { min-width: 38px; text-align: right; color: #9aa0ad; font-variant-numeric: tabular-nums; }
   .status { font-size: 11px; color: #7fe0a8; margin-top: 4px; min-height: 14px; word-break: break-word; }
   .status.error { color: #e08a8a; }
   .meter { width: 100%; height: 18px; border-radius: 4px; margin-top: 6px; }
+  .layer.card { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
+  .layer-head { display: flex; gap: 4px; align-items: center; }
+  .layer-name { flex: 1; min-width: 0; padding: 3px 6px; background: #12141a; color: #d8dae0;
+    border: 1px solid #333; border-radius: 4px; }
+  button.icon { width: 26px; padding: 3px 0; margin-top: 0; flex: none; }
   .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
   .slot {
     position: relative; border: 1px dashed #555; border-radius: 6px; padding: 6px; text-align: center;
@@ -262,6 +328,7 @@
   .slot.dragover { border-color: #6ea8fe; background: #232733; }
   .slot img { width: 48px; height: 48px; object-fit: contain; }
   .slot img.pixelated { image-rendering: pixelated; }
+  .slot img.missing { visibility: hidden; }
   .slot .name { font-size: 11px; color: #9aa0ad; }
   .slot .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;
     line-height: 1; font-size: 12px; margin: 0; }

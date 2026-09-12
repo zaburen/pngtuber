@@ -3,43 +3,58 @@
 
 /**
  * Framework-free avatar renderer shared by the in-app preview and the OBS
- * overlay page. Owns one <img> per frame key inside `container` and toggles
- * which one is visible.
+ * overlay page. Keeps one <img> per render layer inside `container`, stacked
+ * bottom → top, all centered on the same origin.
  */
-import { FRAME_KEYS, type FrameKey, type RenderState } from './types';
+import type { FrameKey, RenderState } from './types';
 
 export class Renderer {
-  private imgs = {} as Record<FrameKey, HTMLImageElement>;
-  private urls = {} as Record<FrameKey, string | null>;
+  /** layer id → its img element (insertion order = stacking order). */
+  private imgs = new Map<string, HTMLImageElement>();
   private lastBounce = 0;
   private scale = 1;
 
   constructor(private container: HTMLElement) {
     container.classList.add('avatar');
-    for (const k of FRAME_KEYS) {
-      const img = document.createElement('img');
-      img.alt = '';
-      img.draggable = false;
-      img.onload = () => this.applyScale(img);
-      container.appendChild(img);
-      this.imgs[k] = img;
-      this.urls[k] = null;
-    }
   }
 
   render(s: RenderState) {
     this.scale = s.scale;
     this.container.classList.toggle('pixelated', s.pixelated);
-    for (const k of FRAME_KEYS) {
-      const want = s.frames[k] ?? placeholder(k);
-      if (this.urls[k] !== want) {
-        this.urls[k] = want;
-        this.imgs[k].src = want;
+
+    const want = s.placeholder
+      ? [{ id: '__placeholder', url: placeholder(s.placeholderFrame) }]
+      : s.layers;
+
+    // Drop imgs for layers that no longer exist.
+    const ids = new Set(want.map((l) => l.id));
+    for (const [id, img] of this.imgs) {
+      if (!ids.has(id)) {
+        img.remove();
+        this.imgs.delete(id);
       }
-      this.applyScale(this.imgs[k]);
     }
-    const use = resolveFrame(s.frame, s.frames);
-    for (const k of FRAME_KEYS) this.imgs[k].classList.toggle('active', k === use);
+
+    for (const l of want) {
+      let img = this.imgs.get(l.id);
+      if (!img) {
+        img = document.createElement('img');
+        img.alt = '';
+        img.draggable = false;
+        img.onload = () => this.applyScale(img!);
+        this.imgs.set(l.id, img);
+      }
+      // Re-append in order: cheap way to keep DOM order = stack order even
+      // after layers are added, removed, or reordered.
+      this.container.appendChild(img);
+      const url = l.url ?? '';
+      if (img.dataset.url !== url) {
+        img.dataset.url = url;
+        if (url) img.src = url;
+      }
+      img.classList.toggle('active', !!url);
+      this.applyScale(img);
+    }
 
     if (s.bounceSeq !== this.lastBounce) {
       this.lastBounce = s.bounceSeq;
@@ -52,19 +67,6 @@ export class Renderer {
   private applyScale(img: HTMLImageElement) {
     if (img.naturalWidth) img.style.width = img.naturalWidth * this.scale + 'px';
   }
-}
-
-/**
- * Pick the frame to show given which ones the user actually supplied:
- * missing blink → non-blink variant, missing talking → idle.
- */
-export function resolveFrame(want: FrameKey, frames: Record<FrameKey, string | null>): FrameKey {
-  const any = FRAME_KEYS.some((k) => frames[k]);
-  if (!any) return want; // all placeholders, which cover every state
-  if (frames[want]) return want;
-  const base: FrameKey = want.startsWith('talking') ? 'talking' : 'idle';
-  if (frames[base]) return base;
-  return 'idle';
 }
 
 const placeholders: Partial<Record<FrameKey, string>> = {};

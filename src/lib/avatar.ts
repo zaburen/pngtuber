@@ -2,21 +2,24 @@
 // Copyright (c) 2026 zaburen
 
 /**
- * Avatar state machine: mic level → talking, timer → blink. Produces a
- * RenderState whenever something visible changes.
+ * Avatar state machine: mic level → talking, timer → blink. Resolves the
+ * current voice state against the layer stack and produces a RenderState
+ * whenever something visible changes.
  */
 import { Mic } from './mic';
-import type { FrameKey, Profile, RenderState } from './types';
+import {
+  frameStorageKey,
+  type FrameKey,
+  type Profile,
+  type RenderLayer,
+  type RenderState,
+} from './types';
 
 export class Avatar {
   readonly mic = new Mic();
   profile: Profile;
-  frames: Record<FrameKey, string | null> = {
-    idle: null,
-    talking: null,
-    'idle-blink': null,
-    'talking-blink': null,
-  };
+  /** frameStorageKey(layerId, frame) → image URL, for frames that exist. */
+  frames: Record<string, string> = {};
   /** Smoothed, gain-applied mic level for the meter. */
   level = 0;
   talking = false;
@@ -59,15 +62,39 @@ export class Avatar {
     this.onRender(s);
   }
 
+  get voiceState(): FrameKey {
+    return ((this.talking ? 'talking' : 'idle') + (this.blinking ? '-blink' : '')) as FrameKey;
+  }
+
   state(): RenderState {
-    const frame = ((this.talking ? 'talking' : 'idle') + (this.blinking ? '-blink' : '')) as FrameKey;
+    const want = this.voiceState;
+    const layers: RenderLayer[] = this.profile.layers.map((l) => ({
+      id: l.id,
+      url: l.visible ? this.resolve(l.id, l.reactsToVoice ? want : 'idle') : null,
+    }));
     return {
-      frame,
-      frames: { ...this.frames },
+      layers,
+      placeholder: Object.keys(this.frames).length === 0,
+      placeholderFrame: want,
       scale: this.profile.look.scale,
       pixelated: this.profile.look.pixelated,
       bounceSeq: this.bounceSeq,
     };
+  }
+
+  /**
+   * Pick the image a layer shows for a voice state, falling back through
+   * missing frames: no blink variant → non-blink, no talking → idle.
+   */
+  private resolve(layerId: string, want: FrameKey): string | null {
+    const chain: FrameKey[] = want.includes('blink')
+      ? [want, want.startsWith('talking') ? 'talking' : 'idle', 'idle']
+      : [want, 'idle'];
+    for (const f of chain) {
+      const url = this.frames[frameStorageKey(layerId, f)];
+      if (url) return url;
+    }
+    return null;
   }
 
   private updateTalking(now: number) {
