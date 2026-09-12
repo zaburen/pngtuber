@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 zaburen
+
 /** Thin wrappers over the Tauri commands in src-tauri/src/lib.rs. */
 import { invoke } from '@tauri-apps/api/core';
 import { FRAME_KEYS, OVERLAY_ORIGIN, type FrameKey, type Profile } from './types';

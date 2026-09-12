@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 zaburen
+
 /** Microphone capture + RMS level. Talking detection lives in avatar.ts. */
 export class Mic {
   private ctx: AudioContext | null = null;

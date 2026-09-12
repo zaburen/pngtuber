@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 zaburen
+
 export const FRAME_KEYS = ['idle', 'talking', 'idle-blink', 'talking-blink'] as const;
 export type FrameKey = (typeof FRAME_KEYS)[number];
 

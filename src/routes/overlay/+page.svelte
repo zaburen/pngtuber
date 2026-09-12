@@ -1,3 +1,5 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     Copyright (c) 2026 zaburen -->
 <script lang="ts">
   /**
    * OBS overlay: transparent page that mirrors whatever the control window

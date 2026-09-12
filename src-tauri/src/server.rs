@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 zaburen
+
 //! Localhost HTTP + WebSocket server.
 //!
 //! Serves the OBS overlay page (the built SvelteKit `/overlay` route), the

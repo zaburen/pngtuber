@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 zaburen
+
 /**
  * Framework-free avatar renderer shared by the in-app preview and the OBS
  * overlay page. Owns one <img> per frame key inside `container` and toggles

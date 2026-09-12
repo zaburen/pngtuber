@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 zaburen
+
 /**
  * Avatar state machine: mic level → talking, timer → blink. Produces a
  * RenderState whenever something visible changes.
