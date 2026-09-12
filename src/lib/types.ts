@@ -29,6 +29,30 @@ export interface Variant {
   name: string;
 }
 
+/** What a binding does to its layer while active. */
+export type BindingAction = 'variant' | 'show' | 'hide';
+
+/**
+ * A global-input binding: while its trigger is active, override one layer.
+ * Triggers are `key:<name>` (rdev Key debug name, e.g. `key:KeyA`) or
+ * `pad:<name>` (gilrs Button, e.g. `pad:South`); empty until captured.
+ * Bindings never touch the saved layer config — they are runtime overrides.
+ */
+export interface Binding {
+  id: string;
+  trigger: string;
+  layerId: string;
+  action: BindingAction;
+  /** Variant shown while active (action 'variant' only; implies visible). */
+  variantId: string;
+  /** 'hold' = active while the trigger is down; 'toggle' = flips per press. */
+  mode: 'hold' | 'toggle';
+}
+
+export function newBindingId(): string {
+  return 'b' + Math.random().toString(36).slice(2, 8);
+}
+
 /** Id of the variant every layer starts with. */
 export const DEFAULT_VARIANT_ID = 'default';
 
@@ -50,6 +74,7 @@ export interface Profile {
   };
   /** The avatar stack. Always at least one layer. */
   layers: Layer[];
+  bindings: Binding[];
 }
 
 /** Id of the layer old (pre-layer) profiles and fresh installs start with. */
@@ -77,6 +102,7 @@ export const DEFAULT_PROFILE: Profile = {
       activeVariant: DEFAULT_VARIANT_ID,
     },
   ],
+  bindings: [],
 };
 
 /** One resolved layer for drawing: which image (if any) it shows right now. */
@@ -122,11 +148,23 @@ export function mergeProfile(stored: unknown): Profile {
         })
       : // pre-layer profiles (M1) had a single implicit avatar
         DEFAULT_PROFILE.layers.map((l) => ({ ...l, variants: l.variants.map((v) => ({ ...v })) }));
+  const layerIds = new Set(layers.map((l) => l.id));
+  const bindings: Binding[] = (Array.isArray(s.bindings) ? s.bindings : [])
+    .filter((b) => b && layerIds.has(b.layerId))
+    .map((b) => ({
+      id: b.id ?? newBindingId(),
+      trigger: b.trigger ?? '',
+      layerId: b.layerId,
+      action: b.action === 'show' || b.action === 'hide' ? b.action : 'variant',
+      variantId: b.variantId ?? '',
+      mode: b.mode === 'toggle' ? 'toggle' : 'hold',
+    }));
   return {
     version: 1,
     mic: { ...DEFAULT_PROFILE.mic, ...(s.mic ?? {}) },
     look: { ...DEFAULT_PROFILE.look, ...(s.look ?? {}) },
     layers,
+    bindings,
   };
 }
 

@@ -38,6 +38,28 @@ describe('mergeProfile', () => {
     });
     expect(p.layers[0].activeVariant).toBe('v1');
   });
+
+  it('gives pre-binding profiles an empty bindings list', () => {
+    expect(mergeProfile({ version: 1 }).bindings).toEqual([]);
+  });
+
+  it('fills binding defaults and drops bindings whose layer is gone', () => {
+    const p = mergeProfile({
+      layers: [{ id: 'main', name: 'avatar', reactsToVoice: true, visible: true }],
+      bindings: [
+        { layerId: 'main', trigger: 'key:KeyA' },
+        { layerId: 'deleted', trigger: 'key:KeyB', action: 'show' },
+      ],
+    });
+    expect(p.bindings).toHaveLength(1);
+    expect(p.bindings[0]).toMatchObject({
+      layerId: 'main',
+      trigger: 'key:KeyA',
+      action: 'variant',
+      mode: 'hold',
+    });
+    expect(p.bindings[0].id).toBeTruthy();
+  });
 });
 
 describe('frameStorageKey', () => {

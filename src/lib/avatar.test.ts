@@ -76,4 +76,19 @@ describe('Avatar.state', () => {
     avatar.frames = { 'main.default.idle': 'IDLE' };
     expect(avatar.state().placeholder).toBe(false);
   });
+
+  it('binding overrides beat saved variant and visibility', () => {
+    const { avatar, profile } = makeAvatar();
+    avatar.frames = { 'hat.cap.idle': 'CAP', 'hat.none.idle': 'NONE' };
+    profile.layers[1].visible = false; // hidden in the panel...
+    avatar.overrides = new Map([['hat', { variantId: 'cap', visible: true }]]);
+    expect(urlOf(avatar.state(), 'hat')).toBe('CAP'); // ...shown while bound key held
+  });
+
+  it('an override pointing at a deleted variant falls back to the saved one', () => {
+    const { avatar } = makeAvatar();
+    avatar.frames = { 'hat.cap.idle': 'CAP' };
+    avatar.overrides = new Map([['hat', { variantId: 'gone' }]]);
+    expect(urlOf(avatar.state(), 'hat')).toBe('CAP');
+  });
 });

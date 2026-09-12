@@ -6,6 +6,7 @@
  * current voice state against the layer stack and produces a RenderState
  * whenever something visible changes.
  */
+import type { LayerOverride } from './bindings';
 import { Mic } from './mic';
 import {
   frameStorageKey,
@@ -20,6 +21,8 @@ export class Avatar {
   profile: Profile;
   /** frameStorageKey(layerId, frame) → image URL, for frames that exist. */
   frames: Record<string, string> = {};
+  /** Runtime overrides from input bindings; call emit() after replacing. */
+  overrides: Map<string, LayerOverride> = new Map();
   /** Smoothed, gain-applied mic level for the meter. */
   level = 0;
   talking = false;
@@ -68,10 +71,18 @@ export class Avatar {
 
   state(): RenderState {
     const want = this.voiceState;
-    const layers: RenderLayer[] = this.profile.layers.map((l) => ({
-      id: l.id,
-      url: l.visible ? this.resolve(l.id, l.activeVariant, l.reactsToVoice ? want : 'idle') : null,
-    }));
+    const layers: RenderLayer[] = this.profile.layers.map((l) => {
+      const ov = this.overrides.get(l.id);
+      const visible = ov?.visible ?? l.visible;
+      const variant =
+        ov?.variantId && l.variants.some((v) => v.id === ov.variantId)
+          ? ov.variantId
+          : l.activeVariant;
+      return {
+        id: l.id,
+        url: visible ? this.resolve(l.id, variant, l.reactsToVoice ? want : 'idle') : null,
+      };
+    });
     return {
       layers,
       placeholder: Object.keys(this.frames).length === 0,
