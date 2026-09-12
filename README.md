@@ -29,6 +29,42 @@ npm run tauri dev      # run
 npm run tauri build    # installer in src-tauri/target/release/bundle/
 ```
 
+## Architecture
+
+Tauri app: a Rust binary hosts the OS's built-in webview (WebView2 / WebKit), which runs the UI. Rust compiles natively per platform — no Electron, no bundled browser.
+
+| Layer | Tech | Role |
+|---|---|---|
+| UI | Svelte 5 + TypeScript (SvelteKit, static adapter) | Control panel + overlay page |
+| Core logic | Plain TS (`src/lib/`) | Mic analysis, avatar state machine, renderer — framework-free, shared by panel and overlay |
+| Backend | Rust (`src-tauri/`) | File storage, localhost server; input hooks planned |
+| Bridge | Tauri `invoke()` | UI calls Rust commands, gets Promises back |
+
+### Data flow
+
+```
+mic ──► avatar.ts (talking/blink state) ──► RenderState
+                                              │
+              ┌───────────────────────────────┴─────────────┐
+              ▼                                             ▼
+      in-app preview (renderer.ts)         Rust publish_state ──► ws://127.0.0.1:8737/ws
+                                                            │
+                                                            ▼
+                                              OBS overlay page (renderer.ts)
+```
+
+The state machine lives in the frontend because the mic needs the webview's `AudioContext`. Rust stays a relay + file clerk: the axum server (`src-tauri/src/server.rs`) serves the overlay page (embedded at build time via rust-embed), the frame PNGs, and the WebSocket broadcast. The overlay is a browser source rather than a window capture because that's the only way OBS gets real alpha.
+
+### Layout
+
+```
+src/lib/            types.ts (Profile schema) · mic.ts · avatar.ts · renderer.ts · backend.ts
+src/routes/         +page.svelte (control panel) · overlay/+page.svelte (OBS page)
+src-tauri/src/      lib.rs (Tauri commands) · server.rs (axum: /overlay, /frames/*, /ws)
+```
+
+User data (never in the repo): `<app-data>/com.zcdor.pngtuber/profiles/default/` — `profile.json` + `frames/*.png`. The profile JSON is opaque to Rust; the frontend owns the schema and migrates old files via `mergeProfile()`.
+
 ## License
 
 MIT
