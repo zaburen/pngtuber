@@ -28,7 +28,8 @@ Design rule: one data model (layer stack), one UI that grows — the simple user
 - Overlay: headless Chrome screenshot of `http://127.0.0.1:8737/` while the app runs.
 - Panel UI: launch dev with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`, then drive the real webview over CDP (`http://127.0.0.1:9223/json` → WebSocket → Runtime.evaluate / Page.captureScreenshot). Clicks real elements, screenshots without stealing window focus.
 - WS state: one-shot `new WebSocket('ws://127.0.0.1:8737/ws')` dump.
-- M2b input: global keyboard hooks receive SendInput-synthesized events — hotkeys testable. Gamepad + real mic stay manual (user).
+- Mic/speech: add Chromium fake-media flags to the same env var — `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream --use-file-for-fake-audio-capture=<wav>` — and getUserMedia serves that WAV (looped) as the mic. Generate speech-with-pauses via SAPI TTS (PowerShell System.Speech, SpeakSsml with `<break>`), then assert talk/idle transitions on the WS stream. Proven 2026-09-12.
+- M2b input: global keyboard hooks receive SendInput-synthesized events — hotkeys testable. Gamepad stays manual (user).
 
 ## Conventions
 
