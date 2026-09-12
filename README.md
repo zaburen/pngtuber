@@ -67,4 +67,4 @@ User data (never in the repo): `<app-data>/com.zcdor.pngtuber/profiles/default/`
 
 ## License
 
-MIT
+[GPL-3.0-or-later](LICENSE). Use the code freely — but any distributed product built on it must be open source under the same license.
