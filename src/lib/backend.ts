@@ -14,6 +14,10 @@ export const listFrames = () => invoke<string[]>('list_frames');
 export const publishState = (json: string) => invoke<void>('publish_state', { json });
 export const overlayUrl = () => invoke<string>('overlay_url');
 export const profilePath = () => invoke<string>('profile_path');
+/** Register which triggers the global input hook may forward (all else is dropped). */
+export const setBoundTriggers = (triggers: string[]) => invoke<void>('set_bound_triggers', { triggers });
+/** Binding editor: forward the next key/button press once as `input-capture`. */
+export const setTriggerCapture = (on: boolean) => invoke<void>('set_trigger_capture', { on });
 
 /**
  * Frame URLs served by the Rust server, keyed by frame storage key.

@@ -3,9 +3,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { open } from '@tauri-apps/plugin-dialog';
-  import { revealItemInDir } from '@tauri-apps/plugin-opener';
+  import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
+  import { listen } from '@tauri-apps/api/event';
   import { Avatar } from '$lib/avatar';
+  import { BindingEngine } from '$lib/bindings';
   import { Mic } from '$lib/mic';
   import { Renderer, RENDERER_CSS, placeholder } from '$lib/renderer';
   import * as backend from '$lib/backend';
@@ -14,8 +16,10 @@
     OVERLAY_ORIGIN,
     frameStorageKey,
     mergeProfile,
+    newBindingId,
     newLayerId,
     newVariantId,
+    type Binding,
     type FrameKey,
     type Layer,
     type Profile,
@@ -31,7 +35,10 @@
   let profileDir = $state('');
   let copied = $state(false);
   let ready = $state(false);
+  /** Binding currently waiting for a key/button press, if any. */
+  let capturingId: string | null = $state(null);
 
+  const engine = new BindingEngine();
   let avatar: Avatar;
   let stage: HTMLDivElement;
   let meter: HTMLCanvasElement;
@@ -68,11 +75,20 @@
         if (key && file) importFrame(key, file);
       });
 
+      const unTrigger = await listen<{ trigger: string; down: boolean }>('input-trigger', (e) => {
+        if (engine.handle(profile.bindings, e.payload.trigger, e.payload.down)) applyOverrides();
+      });
+      const unCapture = await listen<{ trigger: string }>('input-capture', (e) => {
+        const b = profile.bindings.find((x) => x.id === capturingId);
+        capturingId = null;
+        if (b) b.trigger = e.payload.trigger;
+      });
+
       let raf = requestAnimationFrame(function draw() {
         drawMeter();
         raf = requestAnimationFrame(draw);
       });
-      cleanup = () => { unlisten(); cancelAnimationFrame(raf); avatar.stop(); };
+      cleanup = () => { unlisten(); unTrigger(); unCapture(); cancelAnimationFrame(raf); avatar.stop(); };
     })();
     return () => cleanup();
   });
@@ -82,12 +98,28 @@
   $effect(() => {
     const snapshot = JSON.stringify(profile);
     if (!ready) return;
-    avatar.emit();
+    engine.prune(profile.bindings);
+    applyOverrides();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       backend.saveProfile(JSON.parse(snapshot)).catch((e) => console.error('save failed', e));
     }, 300);
   });
+
+  // Tell Rust which triggers to forward; everything else stays filtered out.
+  const boundTriggers = $derived(
+    [...new Set(profile.bindings.map((b) => b.trigger).filter(Boolean))].sort(),
+  );
+  $effect(() => {
+    const triggers = boundTriggers;
+    if (!ready) return;
+    backend.setBoundTriggers(triggers).catch((e) => console.error('set triggers failed', e));
+  });
+
+  function applyOverrides() {
+    avatar.overrides = engine.overrides(profile.bindings);
+    avatar.emit();
+  }
 
   $effect(() => {
     if (!ready) return;
@@ -171,6 +203,53 @@
     const j = i + delta;
     if (j < 0 || j >= profile.layers.length) return;
     [profile.layers[i], profile.layers[j]] = [profile.layers[j], profile.layers[i]];
+  }
+
+  function addBinding() {
+    const layer = profile.layers[0];
+    const b: Binding = {
+      id: newBindingId(),
+      trigger: '',
+      layerId: layer.id,
+      action: 'variant',
+      variantId: layer.activeVariant,
+      mode: 'hold',
+    };
+    profile.bindings.push(b);
+    startCapture(b);
+  }
+
+  function removeBinding(b: Binding) {
+    if (capturingId === b.id) cancelCapture();
+    profile.bindings = profile.bindings.filter((x) => x.id !== b.id);
+  }
+
+  function startCapture(b: Binding) {
+    capturingId = b.id;
+    backend.setTriggerCapture(true).catch((e) => console.error('capture failed', e));
+  }
+
+  function cancelCapture() {
+    capturingId = null;
+    backend.setTriggerCapture(false).catch((e) => console.error('capture failed', e));
+  }
+
+  /** Keep variantId valid when a binding is pointed at a different layer. */
+  function onBindingLayerChange(b: Binding) {
+    const layer = profile.layers.find((l) => l.id === b.layerId);
+    if (layer && !layer.variants.some((v) => v.id === b.variantId)) {
+      b.variantId = layer.activeVariant;
+    }
+  }
+
+  function bindingLayer(b: Binding): Layer | undefined {
+    return profile.layers.find((l) => l.id === b.layerId);
+  }
+
+  function triggerLabel(t: string): string {
+    if (!t) return 'set trigger…';
+    const [kind, name] = [t.slice(0, t.indexOf(':')), t.slice(t.indexOf(':') + 1)];
+    return (kind === 'pad' ? '🎮 ' : '⌨ ') + name;
   }
 
   async function startMic() {
@@ -307,6 +386,50 @@
       {/if}
     </p>
 
+    <h2>Bindings</h2>
+    {#each profile.bindings as b (b.id)}
+      <div class="binding">
+        <div class="row">
+          <button class="trigger" class:capturing={capturingId === b.id}
+                  title="Click, then press the key or gamepad button to bind"
+                  onclick={() => (capturingId === b.id ? cancelCapture() : startCapture(b))}>
+            {capturingId === b.id ? 'press a key or button…' : triggerLabel(b.trigger)}
+          </button>
+          <button class="icon" title="Remove binding" onclick={() => removeBinding(b)}>×</button>
+        </div>
+        <div class="row">
+          <select bind:value={b.action} title="What the binding does">
+            <option value="variant">show variant</option>
+            <option value="show">show layer</option>
+            <option value="hide">hide layer</option>
+          </select>
+          <select bind:value={b.layerId} onchange={() => onBindingLayerChange(b)} title="Layer">
+            {#each profile.layers as l (l.id)}
+              <option value={l.id}>{l.name}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="row">
+          {#if b.action === 'variant'}
+            <select bind:value={b.variantId} title="Variant to show">
+              {#each bindingLayer(b)?.variants ?? [] as v (v.id)}
+                <option value={v.id}>{v.name}</option>
+              {/each}
+            </select>
+          {/if}
+          <select bind:value={b.mode} title="While held: active only while pressed">
+            <option value="hold">while held</option>
+            <option value="toggle">toggle</option>
+          </select>
+        </div>
+      </div>
+    {/each}
+    <button onclick={addBinding}>+ Add binding</button>
+    <p class="hint">
+      Bindings listen globally — they work while you're in your game or OBS.
+      Only the keys and buttons you bind here are read; everything else you type is ignored.
+    </p>
+
     <h2>Look</h2>
     <label>Scale
       <span class="row"><input type="range" min="1" max="12" step="1" bind:value={profile.look.scale}>
@@ -322,6 +445,15 @@
       <button class="small" onclick={copyUrl}>{copied ? 'Copied' : 'Copy'}</button>
     </div>
     <button class="small" style="margin-top:8px" onclick={() => revealItemInDir(profileDir)}>Open data folder</button>
+
+    <h2>About</h2>
+    <p class="hint">
+      pngtuber is free software (GPL-3.0-or-later), © 2026 zaburen.
+      <a href="https://github.com/zaburen/pngtuber"
+         onclick={(e) => { e.preventDefault(); openUrl('https://github.com/zaburen/pngtuber'); }}>
+        Source code &amp; license</a>.
+      If you received this app without its source, you're entitled to it under the GPL.
+    </p>
   </aside>
 </main>
 
@@ -376,6 +508,13 @@
   .slot .name { font-size: 11px; color: #9aa0ad; }
   .slot .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;
     line-height: 1; font-size: 12px; margin: 0; }
+  .binding { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
+  .binding .row { margin-top: 4px; }
+  .binding .row:first-child { margin-top: 0; }
+  .binding select { margin-top: 0; }
+  .trigger { flex: 1; margin-top: 0; text-align: left; }
+  .trigger.capturing { border-color: #e0b455; color: #f0cd7e; }
   .hint { color: #6f7480; font-size: 11px; margin: 6px 0; }
+  .hint a { color: #6ea8fe; }
   .url { flex: 1; background: #12141a; padding: 5px 7px; border-radius: 4px; font-size: 12px; user-select: all; }
 </style>
