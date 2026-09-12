@@ -10,14 +10,27 @@ export const OVERLAY_ORIGIN = `http://127.0.0.1:${OVERLAY_PORT}`;
 /**
  * One element of the avatar stack, drawn bottom (index 0) to top.
  * A layer that doesn't react to voice uses only its `idle` image.
- * Frame files are stored as `<layerId>.<frameKey>.png` in the profile.
+ * Each layer holds one or more variants (alternative looks: hairstyles,
+ * held items, button poses); exactly one is active. Frame files are stored
+ * as `<layerId>.<variantId>.<frameKey>.png` in the profile.
  */
 export interface Layer {
   id: string;
   name: string;
   reactsToVoice: boolean;
   visible: boolean;
+  variants: Variant[];
+  /** id of the variant currently shown (and edited). */
+  activeVariant: string;
 }
+
+export interface Variant {
+  id: string;
+  name: string;
+}
+
+/** Id of the variant every layer starts with. */
+export const DEFAULT_VARIANT_ID = 'default';
 
 export interface Profile {
   version: 1;
@@ -46,11 +59,24 @@ export function newLayerId(): string {
   return 'l' + Math.random().toString(36).slice(2, 8);
 }
 
+function defaultVariants(): Variant[] {
+  return [{ id: DEFAULT_VARIANT_ID, name: 'default' }];
+}
+
 export const DEFAULT_PROFILE: Profile = {
   version: 1,
   mic: { deviceId: '', enabled: true, threshold: 0.12, gain: 2.0, hold: 180 },
   look: { scale: 4, pixelated: true, bounce: true, blink: true },
-  layers: [{ id: BASE_LAYER_ID, name: 'avatar', reactsToVoice: true, visible: true }],
+  layers: [
+    {
+      id: BASE_LAYER_ID,
+      name: 'avatar',
+      reactsToVoice: true,
+      visible: true,
+      variants: defaultVariants(),
+      activeVariant: DEFAULT_VARIANT_ID,
+    },
+  ],
 };
 
 /** One resolved layer for drawing: which image (if any) it shows right now. */
@@ -80,14 +106,22 @@ export function mergeProfile(stored: unknown): Profile {
   const s = (stored ?? {}) as Partial<Profile>;
   const layers: Layer[] =
     Array.isArray(s.layers) && s.layers.length > 0
-      ? s.layers.map((l, i) => ({
-          id: l.id ?? newLayerId(),
-          name: l.name ?? `layer ${i + 1}`,
-          reactsToVoice: l.reactsToVoice ?? false,
-          visible: l.visible ?? true,
-        }))
+      ? s.layers.map((l, i) => {
+          const variants =
+            Array.isArray(l.variants) && l.variants.length > 0 ? l.variants : defaultVariants();
+          return {
+            id: l.id ?? newLayerId(),
+            name: l.name ?? `layer ${i + 1}`,
+            reactsToVoice: l.reactsToVoice ?? false,
+            visible: l.visible ?? true,
+            variants,
+            activeVariant: variants.some((v) => v.id === l.activeVariant)
+              ? l.activeVariant!
+              : variants[0].id,
+          };
+        })
       : // pre-layer profiles (M1) had a single implicit avatar
-        DEFAULT_PROFILE.layers.map((l) => ({ ...l }));
+        DEFAULT_PROFILE.layers.map((l) => ({ ...l, variants: l.variants.map((v) => ({ ...v })) }));
   return {
     version: 1,
     mic: { ...DEFAULT_PROFILE.mic, ...(s.mic ?? {}) },
@@ -96,7 +130,11 @@ export function mergeProfile(stored: unknown): Profile {
   };
 }
 
-/** Storage key for a layer's frame image (matches `<key>.png` on disk). */
-export function frameStorageKey(layerId: string, frame: FrameKey): string {
-  return `${layerId}.${frame}`;
+/** Storage key for a variant's frame image (matches `<key>.png` on disk). */
+export function frameStorageKey(layerId: string, variantId: string, frame: FrameKey): string {
+  return `${layerId}.${variantId}.${frame}`;
+}
+
+export function newVariantId(): string {
+  return 'v' + Math.random().toString(36).slice(2, 8);
 }

@@ -15,6 +15,7 @@
     frameStorageKey,
     mergeProfile,
     newLayerId,
+    newVariantId,
     type FrameKey,
     type Layer,
     type Profile,
@@ -126,15 +127,42 @@
   }
 
   function addLayer() {
-    profile.layers.push({ id: newLayerId(), name: `layer ${profile.layers.length + 1}`, reactsToVoice: false, visible: true });
+    profile.layers.push({
+      id: newLayerId(),
+      name: `layer ${profile.layers.length + 1}`,
+      reactsToVoice: false,
+      visible: true,
+      variants: [{ id: 'default', name: 'default' }],
+      activeVariant: 'default',
+    });
   }
 
   async function removeLayer(layer: Layer) {
-    for (const f of FRAME_KEYS) {
-      const key = frameStorageKey(layer.id, f);
-      if (frameUrls[key]) present = await backend.clearFrame(key);
+    for (const v of layer.variants) {
+      for (const f of FRAME_KEYS) {
+        const key = frameStorageKey(layer.id, v.id, f);
+        if (frameUrls[key]) present = await backend.clearFrame(key);
+      }
     }
     profile.layers = profile.layers.filter((l) => l.id !== layer.id);
+    frameVersion++;
+  }
+
+  function addVariant(layer: Layer) {
+    const v = { id: newVariantId(), name: `variant ${layer.variants.length + 1}` };
+    layer.variants.push(v);
+    layer.activeVariant = v.id;
+  }
+
+  async function removeVariant(layer: Layer) {
+    if (layer.variants.length <= 1) return;
+    const v = layer.activeVariant;
+    for (const f of FRAME_KEYS) {
+      const key = frameStorageKey(layer.id, v, f);
+      if (frameUrls[key]) present = await backend.clearFrame(key);
+    }
+    layer.variants = layer.variants.filter((x) => x.id !== v);
+    layer.activeVariant = layer.variants[0].id;
     frameVersion++;
   }
 
@@ -238,9 +266,23 @@
           <label class="row"><input type="checkbox" bind:checked={layer.visible}> Visible</label>
           <label class="row"><input type="checkbox" bind:checked={layer.reactsToVoice}> Reacts to voice (talking/blink frames)</label>
         {/if}
+        {#if layer.variants.length > 1}
+          <div class="variant-row">
+            <select bind:value={layer.activeVariant} title="Active variant">
+              {#each layer.variants as v (v.id)}
+                <option value={v.id}>{v.name}</option>
+              {/each}
+            </select>
+            {#each layer.variants.filter((v) => v.id === layer.activeVariant) as av (av.id)}
+              <input class="layer-name" bind:value={av.name} title="Variant name">
+            {/each}
+            <button class="icon" title="Add variant" onclick={() => addVariant(layer)}>+</button>
+            <button class="icon" title="Delete this variant and its images" onclick={() => removeVariant(layer)}>×</button>
+          </div>
+        {/if}
         <div class="slots">
           {#each slotsFor(layer) as k (k)}
-            {@const key = frameStorageKey(layer.id, k)}
+            {@const key = frameStorageKey(layer.id, layer.activeVariant, k)}
             <div class="slot" class:dragover={dragOver === key} data-slot={key}
                  role="button" tabindex="0" title="Click or drop an image"
                  onclick={() => pickFrame(key)} onkeydown={(e) => e.key === 'Enter' && pickFrame(key)}>
@@ -316,6 +358,8 @@
   .meter { width: 100%; height: 18px; border-radius: 4px; margin-top: 6px; }
   .layer.card { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
   .layer-head { display: flex; gap: 4px; align-items: center; }
+  .variant-row { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+  .variant-row select { flex: 1; margin-top: 0; }
   .layer-name { flex: 1; min-width: 0; padding: 3px 6px; background: #12141a; color: #d8dae0;
     border: 1px solid #333; border-radius: 4px; }
   button.icon { width: 26px; padding: 3px 0; margin-top: 0; flex: none; }

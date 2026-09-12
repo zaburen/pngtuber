@@ -70,7 +70,7 @@ export class Avatar {
     const want = this.voiceState;
     const layers: RenderLayer[] = this.profile.layers.map((l) => ({
       id: l.id,
-      url: l.visible ? this.resolve(l.id, l.reactsToVoice ? want : 'idle') : null,
+      url: l.visible ? this.resolve(l.id, l.activeVariant, l.reactsToVoice ? want : 'idle') : null,
     }));
     return {
       layers,
@@ -86,12 +86,12 @@ export class Avatar {
    * Pick the image a layer shows for a voice state, falling back through
    * missing frames: no blink variant → non-blink, no talking → idle.
    */
-  private resolve(layerId: string, want: FrameKey): string | null {
+  private resolve(layerId: string, variantId: string, want: FrameKey): string | null {
     const chain: FrameKey[] = want.includes('blink')
       ? [want, want.startsWith('talking') ? 'talking' : 'idle', 'idle']
       : [want, 'idle'];
     for (const f of chain) {
-      const url = this.frames[frameStorageKey(layerId, f)];
+      const url = this.frames[frameStorageKey(layerId, variantId, f)];
       if (url) return url;
     }
     return null;
