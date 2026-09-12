@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 zaburen
 
+mod input;
 mod server;
 
 use server::Shared;
@@ -14,6 +15,7 @@ const FRAMES_DIR: &str = "frames";
 /// frontend; Rust only stores it and serves the frame files next to it.
 struct AppState {
     shared: Shared,
+    input_filter: input::SharedFilter,
 }
 
 fn profile_dir_sync(shared: &Shared) -> PathBuf {
@@ -127,6 +129,19 @@ fn overlay_url() -> String {
     format!("http://127.0.0.1:{}/", server::DEFAULT_PORT)
 }
 
+/// Frontend registers which triggers are bound; the input listeners drop
+/// everything else (see input.rs privacy design).
+#[tauri::command]
+fn set_bound_triggers(state: State<AppState>, triggers: Vec<String>) {
+    state.input_filter.lock().unwrap().bound = triggers.into_iter().collect();
+}
+
+/// Binding editor: forward the next key/button press once as `input-capture`.
+#[tauri::command]
+fn set_trigger_capture(state: State<AppState>, on: bool) {
+    state.input_filter.lock().unwrap().capturing = on;
+}
+
 #[tauri::command]
 fn profile_path(state: State<AppState>) -> String {
     profile_dir_sync(&state.shared).to_string_lossy().into_owned()
@@ -153,7 +168,10 @@ pub fn run() {
             log::info!("profile dir: {}", dir.display());
             let shared = Shared::new(dir);
             tauri::async_runtime::spawn(server::run(shared.clone(), server::DEFAULT_PORT));
-            app.manage(AppState { shared });
+            let input_filter = input::SharedFilter::default();
+            input::spawn_keyboard(app.handle().clone(), input_filter.clone());
+            input::spawn_gamepad(app.handle().clone(), input_filter.clone());
+            app.manage(AppState { shared, input_filter });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -164,7 +182,9 @@ pub fn run() {
             list_frames,
             publish_state,
             overlay_url,
-            profile_path
+            profile_path,
+            set_bound_triggers,
+            set_trigger_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
