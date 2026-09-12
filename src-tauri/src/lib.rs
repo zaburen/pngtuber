@@ -20,8 +20,30 @@ fn profile_dir_sync(shared: &Shared) -> PathBuf {
     shared.profile_dir.blocking_read().clone()
 }
 
+/// Frame keys are `<layerId>.<frameKey>` (dots separate the parts).
 fn frame_key_ok(key: &str) -> bool {
-    !key.is_empty() && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    !key.is_empty()
+        && !key.starts_with('.')
+        && !key.ends_with('.')
+        && key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+}
+
+/// M1 stored frames flat (`idle.png`); the layer model stores them as
+/// `<layerId>.<frameKey>.png`. Rename old files into the base layer the
+/// frontend migrates old profiles onto (`main`, see types.ts BASE_LAYER_ID).
+fn migrate_flat_frames(frames_dir: &Path) {
+    for frame in ["idle", "talking", "idle-blink", "talking-blink"] {
+        let old = frames_dir.join(format!("{frame}.png"));
+        let new = frames_dir.join(format!("main.{frame}.png"));
+        if old.exists() && !new.exists() {
+            match std::fs::rename(&old, &new) {
+                Ok(()) => log::info!("migrated frame {frame}.png -> main.{frame}.png"),
+                Err(e) => log::warn!("frame migration failed for {frame}: {e}"),
+            }
+        }
+    }
 }
 
 #[tauri::command]
@@ -124,6 +146,7 @@ pub fn run() {
         .setup(|app| {
             let dir = default_profile_dir(app.handle());
             std::fs::create_dir_all(dir.join(FRAMES_DIR))?;
+            migrate_flat_frames(&dir.join(FRAMES_DIR));
             log::info!("profile dir: {}", dir.display());
             let shared = Shared::new(dir);
             tauri::async_runtime::spawn(server::run(shared.clone(), server::DEFAULT_PORT));
