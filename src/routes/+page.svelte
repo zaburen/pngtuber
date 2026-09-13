@@ -345,19 +345,24 @@
           <label class="row"><input type="checkbox" bind:checked={layer.visible}> Visible</label>
           <label class="row"><input type="checkbox" bind:checked={layer.reactsToVoice}> Reacts to voice (talking/blink frames)</label>
         {/if}
-        {#if layer.variants.length > 1}
-          <div class="variant-row">
-            <select bind:value={layer.activeVariant} title="Active variant">
-              {#each layer.variants as v (v.id)}
-                <option value={v.id}>{v.name}</option>
+        {#if multiLayer}
+          {#if layer.variants.length > 1}
+            <div class="variant-row">
+              <select bind:value={layer.activeVariant} title="Active variant">
+                {#each layer.variants as v (v.id)}
+                  <option value={v.id}>{v.name}</option>
+                {/each}
+              </select>
+              {#each layer.variants.filter((v) => v.id === layer.activeVariant) as av (av.id)}
+                <input class="layer-name" bind:value={av.name} title="Variant name">
               {/each}
-            </select>
-            {#each layer.variants.filter((v) => v.id === layer.activeVariant) as av (av.id)}
-              <input class="layer-name" bind:value={av.name} title="Variant name">
-            {/each}
-            <button class="icon" title="Add variant" onclick={() => addVariant(layer)}>+</button>
-            <button class="icon" title="Delete this variant and its images" onclick={() => removeVariant(layer)}>×</button>
-          </div>
+              <button class="icon" title="Add another variant" onclick={() => addVariant(layer)}>+</button>
+              <button class="icon" title="Delete this variant and its images" onclick={() => removeVariant(layer)}>×</button>
+            </div>
+          {:else}
+            <button class="add-variant" title="A variant is an alternate look for this layer — e.g. a controller with different buttons pressed. Bind one to a key or button."
+                    onclick={() => addVariant(layer)}>+ Add variant (alternate look)</button>
+          {/if}
         {/if}
         <div class="slots">
           {#each slotsFor(layer) as k (k)}
@@ -492,6 +497,7 @@
   .layer-head { display: flex; gap: 4px; align-items: center; }
   .variant-row { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
   .variant-row select { flex: 1; margin-top: 0; }
+  .add-variant { margin-top: 6px; font-size: 12px; }
   .layer-name { flex: 1; min-width: 0; padding: 3px 6px; background: #12141a; color: #d8dae0;
     border: 1px solid #333; border-radius: 4px; }
   button.icon { width: 26px; padding: 3px 0; margin-top: 0; flex: none; }
