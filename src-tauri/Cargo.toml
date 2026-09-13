@@ -32,5 +32,9 @@ mime_guess = "2"
 log = "0.4"
 env_logger = "0.11"
 rdev = "0.5.3"
-gilrs = "0.11.2"
+# xinput backend, not the default wgi: Windows.Gaming.Input only delivers
+# input to the focused window, but bindings must fire while the user's game
+# has focus. XInput covers Xbox-compatible pads (incl. Steam Input/DS4Windows
+# emulation) regardless of focus.
+gilrs = { version = "0.11.2", default-features = false, features = ["xinput"] }
 

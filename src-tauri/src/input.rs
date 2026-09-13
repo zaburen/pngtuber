@@ -72,6 +72,18 @@ pub fn spawn_keyboard(app: AppHandle, filter: SharedFilter) {
     });
 }
 
+/// A gamepad trigger id. Mapped buttons use their stable Debug name
+/// ("pad:South"); a button gilrs couldn't map (no SDL mapping for the device)
+/// comes through as `Button::Unknown`, so we disambiguate those by raw code
+/// ("pad:Unknown:13") — otherwise every unmapped button would collide.
+fn pad_trigger(btn: gilrs::Button, code: gilrs::ev::Code) -> String {
+    if btn == gilrs::Button::Unknown {
+        format!("pad:Unknown:{code}")
+    } else {
+        format!("pad:{btn:?}")
+    }
+}
+
 /// Gamepad poll thread. Button Debug names are stable ("South", "LeftTrigger");
 /// triggers are stored as "pad:<name>".
 pub fn spawn_gamepad(app: AppHandle, filter: SharedFilter) {
@@ -83,14 +95,17 @@ pub fn spawn_gamepad(app: AppHandle, filter: SharedFilter) {
                 return;
             }
         };
+        for (_, gp) in gilrs.gamepads() {
+            log::info!("gamepad detected: {}", gp.name());
+        }
         loop {
             while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
                 match event {
-                    gilrs::EventType::ButtonPressed(btn, _) => {
-                        handle(&app, &filter, format!("pad:{btn:?}"), true);
+                    gilrs::EventType::ButtonPressed(btn, code) => {
+                        handle(&app, &filter, pad_trigger(btn, code), true);
                     }
-                    gilrs::EventType::ButtonReleased(btn, _) => {
-                        handle(&app, &filter, format!("pad:{btn:?}"), false);
+                    gilrs::EventType::ButtonReleased(btn, code) => {
+                        handle(&app, &filter, pad_trigger(btn, code), false);
                     }
                     _ => {} // axes/connection events are not bindable (yet)
                 }
