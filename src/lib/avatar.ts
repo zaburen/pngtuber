@@ -129,7 +129,9 @@ export class Avatar {
   }
 
   private scheduleBlink() {
-    const wait = 2000 + Math.random() * 5000;
+    // Jitter ±40% around the configured average so blinks don't feel metronomic.
+    const avg = Math.max(0.5, this.profile.look.blinkEvery) * 1000;
+    const wait = avg * (0.6 + Math.random() * 0.8);
     this.blinkTimer = setTimeout(() => {
       if (this.profile.look.blink) {
         this.blinking = true;
