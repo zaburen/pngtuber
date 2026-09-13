@@ -46,9 +46,10 @@ separate per-pose timed system (it would be throwaway).
 
 ## Build order
 
-1. **Button-press Poses** (hold-only). Flagship: press a button → avatar swaps to a full
-   look with its own idle/talking; release → base. *(Build now.)*
-2. **Props** (backgrounds / accessories; show-always or toggle/swap).
+1. **Button-press Poses** (hold-only). ✔ Press a button → avatar swaps to a full look
+   with its own idle/talking; release → base.
+2. **Props** (backgrounds / overlay accessories). ✔ Behind/in-front placement; always
+   shown or shown-while-held. `src/lib/props.ts`.
 3. **Toggle mode** (after the multi-toggle rule is decided).
 4. **Simple vs. advanced views** (decide the line once the feature surface exists).
 5. **Layered character composition** (body / hair / mustache / clothing via PixelLab;

@@ -18,7 +18,7 @@ Public, cross-platform PNGTuber desktop app (Tauri 2 + SvelteKit/Svelte 5 + TS).
 
 ## Roadmap (user-approved 2026-08-23; reshaped 2026-09-12; States/Poses reframe 2026-09-13)
 
-M1 shell + port ✔ → M2a layer model ✔ + per-layer variants ✔ → M2b global input (`rdev` keyboard, `gilrs` gamepad on the **xinput** backend) ✔ + States/Poses UI ✔ (gamepad-verified 2026-09-13). Next: the **States / Poses / Props** build order in [docs/ux-spec.md](docs/ux-spec.md) — poses (button-press, hold) done; props next, then toggle, then simple/advanced views, then layered composition + timed animations. Then M4 motion + profiles → M5 release (CI builds). Check in with user after each.
+M1 shell + port ✔ → M2a layer model ✔ + per-layer variants ✔ → M2b global input (`rdev` keyboard, `gilrs` gamepad on the **xinput** backend) ✔ + States/Poses UI ✔ (gamepad-verified 2026-09-13). Next: the **States / Poses / Props** build order in [docs/ux-spec.md](docs/ux-spec.md) — poses (button-press, hold) ✔ and props (backgrounds/overlay accessories, behind/front, always-on or hold) ✔; next toggle, then simple/advanced views, then layered composition + timed animations. Then M4 motion + profiles → M5 release (CI builds). Check in with user after each.
 
 Model: avatar = ordered layer stack (unchanged). UI presents it as **States** (idle/talking), **Poses** (alternate full looks = variants of the main voice layer + a hold binding), and **Props** (non-voice layers; step 2). `src/lib/poses.ts` is the tested translation from pose ops to variant/binding mutations. Simple/advanced split deferred until the feature surface is complete.
 
