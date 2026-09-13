@@ -16,11 +16,11 @@ Public, cross-platform PNGTuber desktop app (Tauri 2 + SvelteKit/Svelte 5 + TS).
 - Overlay via localhost browser source = real alpha in OBS; window capture can't do alpha.
 - `beforeDevCommand` runs `npm run build` first because rust-embed needs `build/` to exist (build.rs also creates it empty).
 
-## Roadmap (user-approved 2026-08-23, reshaped 2026-09-12)
+## Roadmap (user-approved 2026-08-23; reshaped 2026-09-12; States/Poses reframe 2026-09-13)
 
-M1 shell + port ✔ → M2a layer model ✔ + per-layer variants ✔ (avatar = ordered layer stack; each layer holds named variants — alternative looks; frames stored as <layerId>.<variantId>.<frameKey>.png) → M2b global input + bindings (`rdev`, `gilrs`; binding = trigger → swap/show/hide layer; add About credit to UI) → M3 layer UX polish (reorder, offsets, static props) → M4 motion + profiles → M5 release (CI builds). Check in with user after each.
+M1 shell + port ✔ → M2a layer model ✔ + per-layer variants ✔ → M2b global input (`rdev` keyboard, `gilrs` gamepad on the **xinput** backend) ✔ + States/Poses UI ✔ (gamepad-verified 2026-09-13). Next: the **States / Poses / Props** build order in [docs/ux-spec.md](docs/ux-spec.md) — poses (button-press, hold) done; props next, then toggle, then simple/advanced views, then layered composition + timed animations. Then M4 motion + profiles → M5 release (CI builds). Check in with user after each.
 
-Design rule: one data model (layer stack), one UI that grows — the simple user has a 1-layer stack and never sees layer vocabulary. No simple/advanced mode split.
+Model: avatar = ordered layer stack (unchanged). UI presents it as **States** (idle/talking), **Poses** (alternate full looks = variants of the main voice layer + a hold binding), and **Props** (non-voice layers; step 2). `src/lib/poses.ts` is the tested translation from pose ops to variant/binding mutations. Simple/advanced split deferred until the feature surface is complete.
 
 ## Testing (agent-drivable)
 
@@ -29,7 +29,7 @@ Design rule: one data model (layer stack), one UI that grows — the simple user
 - Panel UI: launch dev with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9223`, then drive the real webview over CDP (`http://127.0.0.1:9223/json` → WebSocket → Runtime.evaluate / Page.captureScreenshot). Clicks real elements, screenshots without stealing window focus.
 - WS state: one-shot `new WebSocket('ws://127.0.0.1:8737/ws')` dump.
 - Mic/speech: add Chromium fake-media flags to the same env var — `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream --use-file-for-fake-audio-capture=<wav>` — and getUserMedia serves that WAV (looped) as the mic. Generate speech-with-pauses via SAPI TTS (PowerShell System.Speech, SpeakSsml with `<break>`), then assert talk/idle transitions on the WS stream. Proven 2026-09-12.
-- M2b input: global keyboard hooks receive SendInput-synthesized events — hotkeys testable. Gamepad stays manual (user).
+- Input: global keyboard hooks receive SendInput-synthesized events — hotkeys testable end-to-end (arm capture in a pose card, synthesize a key, assert the WS state swaps `main.default` → `main.<pose>`). Gamepad is user-manual QA (`gilrs` needs the **xinput** feature, not the default wgi, or a connected pad isn't enumerated on Windows).
 
 ## Conventions
 
