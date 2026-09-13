@@ -13,6 +13,15 @@
   import * as backend from '$lib/backend';
   import { addPose, listPoses, mainLayer, removePose, type Pose } from '$lib/poses';
   import {
+    addProp,
+    clearPropTrigger,
+    ensurePropBinding,
+    listProps,
+    removeProp,
+    setPropBehind,
+    type Prop,
+  } from '$lib/props';
+  import {
     DEFAULT_VARIANT_ID,
     FRAME_KEYS,
     OVERLAY_ORIGIN,
@@ -43,6 +52,7 @@
   const frameUrls = $derived(backend.frameUrls(present, frameVersion));
   const main = $derived(mainLayer(profile));
   const poses = $derived(listPoses(profile));
+  const props = $derived(listProps(profile));
 
   onMount(() => {
     let cleanup = () => {};
@@ -167,6 +177,27 @@
     frameVersion++;
   }
 
+  function addPropUI() {
+    addProp(profile);
+  }
+
+  async function deleteProp(prop: Prop) {
+    if (capturingId === prop.bindingId) cancelCapture();
+    const key = frameStorageKey(prop.id, DEFAULT_VARIANT_ID, 'idle');
+    if (frameUrls[key]) present = await backend.clearFrame(key);
+    removeProp(profile, prop.id);
+    frameVersion++;
+  }
+
+  function startPropCapture(prop: Prop) {
+    capture(prop.bindingId ?? ensurePropBinding(profile, prop.id));
+  }
+
+  function clearPropTriggerUI(prop: Prop) {
+    if (capturingId === prop.bindingId) cancelCapture();
+    clearPropTrigger(profile, prop.id);
+  }
+
   function capture(bindingId: string | null) {
     if (!bindingId) return;
     capturingId = bindingId;
@@ -233,17 +264,16 @@
   {@html `<style>${RENDERER_CSS}</style>`}
 </svelte:head>
 
-{#snippet frameSlots(layerId: string, variantId: string, voice: boolean)}
+{#snippet frameSlots(layerId: string, variantId: string, voice: boolean, ghost: boolean)}
   <div class="slots">
     {#each (voice ? FRAME_KEYS : (['idle'] as FrameKey[])) as k (k)}
       {@const key = frameStorageKey(layerId, variantId, k)}
-      {@const isBase = variantId === DEFAULT_VARIANT_ID}
       <div class="slot" class:dragover={dragOver === key} data-slot={key}
            role="button" tabindex="0" title="Click or drop a PNG"
            onclick={() => pickFrame(key)} onkeydown={(e) => e.key === 'Enter' && pickFrame(key)}>
         <img src={frameUrls[key] ?? placeholder(k)} alt="" class:pixelated={profile.look.pixelated}
-             class:missing={!frameUrls[key] && !isBase}>
-        <div class="name">{k}{frameUrls[key] ? '' : isBase ? ' (placeholder)' : ' (empty)'}</div>
+             class:missing={!frameUrls[key] && !ghost}>
+        <div class="name">{voice ? k : 'image'}{frameUrls[key] ? '' : ghost ? ' (placeholder)' : ' (empty)'}</div>
         {#if frameUrls[key]}
           <button class="x" title="Remove" onclick={(e) => removeFrame(key, e)}>×</button>
         {/if}
@@ -284,7 +314,7 @@
 
     <h2>Avatar</h2>
     <p class="hint">Your <b>idle</b> and <b>talking</b> frames. Only idle is required — talking and blink fall back to it.</p>
-    {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true)}
+    {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true, true)}
 
     <h2>Poses</h2>
     <p class="hint">
@@ -306,10 +336,47 @@
           {:else if pose.trigger}Trigger: {triggerLabel(pose.trigger)}
           {:else}Set trigger…{/if}
         </button>
-        {@render frameSlots(main.id, pose.id, true)}
+        {@render frameSlots(main.id, pose.id, true, false)}
       </div>
     {/each}
     <button onclick={addPoseAndCapture}>+ Add pose</button>
+
+    <h2>Props</h2>
+    <p class="hint">
+      Backgrounds and overlay accessories that sit behind or in front of the avatar and
+      can stack together. Shown always, or only while you hold a key/button.
+    </p>
+    {#each props as prop (prop.id)}
+      <div class="card">
+        <div class="pose-head">
+          {#each profile.layers.filter((l) => l.id === prop.id) as pl (pl.id)}
+            <input class="layer-name" bind:value={pl.name} title="Prop name">
+          {/each}
+          <button class="icon" title="Delete prop and its image" onclick={() => deleteProp(prop)}>×</button>
+        </div>
+        <label class="row">
+          <input type="checkbox" checked={prop.behind}
+                 onchange={(e) => setPropBehind(profile, prop.id, e.currentTarget.checked)}>
+          Behind the avatar (background)
+        </label>
+        {#if prop.trigger || capturingId === prop.bindingId}
+          <div class="row">
+            <button class="trigger" class:capturing={capturingId === prop.bindingId}
+                    title="Click, then press the key or gamepad button that shows this prop"
+                    onclick={() => (capturingId === prop.bindingId ? cancelCapture() : startPropCapture(prop))}>
+              {#if capturingId === prop.bindingId}press a key or button…
+              {:else}While held: {triggerLabel(prop.trigger)}{/if}
+            </button>
+            <button class="icon" title="Show always (remove trigger)" onclick={() => clearPropTriggerUI(prop)}>×</button>
+          </div>
+        {:else}
+          <button class="trigger dim" title="By default a prop is always visible. Click to show it only while a key/button is held."
+                  onclick={() => startPropCapture(prop)}>Always shown — click to trigger it instead</button>
+        {/if}
+        {@render frameSlots(prop.id, DEFAULT_VARIANT_ID, false, false)}
+      </div>
+    {/each}
+    <button onclick={addPropUI}>+ Add prop</button>
 
     <h2>Look</h2>
     <label>Scale
@@ -381,6 +448,7 @@
   button.icon { width: 26px; padding: 3px 0; margin-top: 0; flex: none; }
   .trigger { text-align: left; margin-top: 6px; }
   .trigger.capturing { border-color: #e0b455; color: #f0cd7e; }
+  .trigger.dim { color: #8a8f9c; font-size: 12px; }
   .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
   .slot {
     position: relative; border: 1px dashed #555; border-radius: 6px; padding: 6px; text-align: center;
