@@ -11,17 +11,14 @@
   import { Mic } from '$lib/mic';
   import { Renderer, RENDERER_CSS, placeholder } from '$lib/renderer';
   import * as backend from '$lib/backend';
+  import { addPose, listPoses, mainLayer, removePose, type Pose } from '$lib/poses';
   import {
+    DEFAULT_VARIANT_ID,
     FRAME_KEYS,
     OVERLAY_ORIGIN,
     frameStorageKey,
     mergeProfile,
-    newBindingId,
-    newLayerId,
-    newVariantId,
-    type Binding,
     type FrameKey,
-    type Layer,
     type Profile,
   } from '$lib/types';
 
@@ -35,7 +32,7 @@
   let profileDir = $state('');
   let copied = $state(false);
   let ready = $state(false);
-  /** Binding currently waiting for a key/button press, if any. */
+  /** Binding id currently waiting for a key/button press, if any. */
   let capturingId: string | null = $state(null);
 
   const engine = new BindingEngine();
@@ -44,7 +41,8 @@
   let meter: HTMLCanvasElement;
 
   const frameUrls = $derived(backend.frameUrls(present, frameVersion));
-  const multiLayer = $derived(profile.layers.length > 1);
+  const main = $derived(mainLayer(profile));
+  const poses = $derived(listPoses(profile));
 
   onMount(() => {
     let cleanup = () => {};
@@ -133,10 +131,6 @@
     return el?.dataset.slot ?? null;
   }
 
-  function slotsFor(layer: Layer): FrameKey[] {
-    return layer.reactsToVoice ? [...FRAME_KEYS] : ['idle'];
-  }
-
   async function pickFrame(key: string) {
     const file = await open({ multiple: false, filters: [{ name: 'Images', extensions: ['png'] }] });
     if (typeof file === 'string') importFrame(key, file);
@@ -158,74 +152,24 @@
     frameVersion++;
   }
 
-  function addLayer() {
-    profile.layers.push({
-      id: newLayerId(),
-      name: `layer ${profile.layers.length + 1}`,
-      reactsToVoice: false,
-      visible: true,
-      variants: [{ id: 'default', name: 'default' }],
-      activeVariant: 'default',
-    });
+  function addPoseAndCapture() {
+    const pose = addPose(profile);
+    capture(pose.bindingId);
   }
 
-  async function removeLayer(layer: Layer) {
-    for (const v of layer.variants) {
-      for (const f of FRAME_KEYS) {
-        const key = frameStorageKey(layer.id, v.id, f);
-        if (frameUrls[key]) present = await backend.clearFrame(key);
-      }
-    }
-    profile.layers = profile.layers.filter((l) => l.id !== layer.id);
-    frameVersion++;
-  }
-
-  function addVariant(layer: Layer) {
-    const v = { id: newVariantId(), name: `variant ${layer.variants.length + 1}` };
-    layer.variants.push(v);
-    layer.activeVariant = v.id;
-  }
-
-  async function removeVariant(layer: Layer) {
-    if (layer.variants.length <= 1) return;
-    const v = layer.activeVariant;
+  async function deletePose(pose: Pose) {
+    if (capturingId === pose.bindingId) cancelCapture();
     for (const f of FRAME_KEYS) {
-      const key = frameStorageKey(layer.id, v, f);
+      const key = frameStorageKey(main.id, pose.id, f);
       if (frameUrls[key]) present = await backend.clearFrame(key);
     }
-    layer.variants = layer.variants.filter((x) => x.id !== v);
-    layer.activeVariant = layer.variants[0].id;
+    removePose(profile, pose.id);
     frameVersion++;
   }
 
-  function moveLayer(layer: Layer, delta: number) {
-    const i = profile.layers.indexOf(layer);
-    const j = i + delta;
-    if (j < 0 || j >= profile.layers.length) return;
-    [profile.layers[i], profile.layers[j]] = [profile.layers[j], profile.layers[i]];
-  }
-
-  function addBinding() {
-    const layer = profile.layers[0];
-    const b: Binding = {
-      id: newBindingId(),
-      trigger: '',
-      layerId: layer.id,
-      action: 'variant',
-      variantId: layer.activeVariant,
-      mode: 'hold',
-    };
-    profile.bindings.push(b);
-    startCapture(b);
-  }
-
-  function removeBinding(b: Binding) {
-    if (capturingId === b.id) cancelCapture();
-    profile.bindings = profile.bindings.filter((x) => x.id !== b.id);
-  }
-
-  function startCapture(b: Binding) {
-    capturingId = b.id;
+  function capture(bindingId: string | null) {
+    if (!bindingId) return;
+    capturingId = bindingId;
     backend.setTriggerCapture(true).catch((e) => console.error('capture failed', e));
   }
 
@@ -234,21 +178,10 @@
     backend.setTriggerCapture(false).catch((e) => console.error('capture failed', e));
   }
 
-  /** Keep variantId valid when a binding is pointed at a different layer. */
-  function onBindingLayerChange(b: Binding) {
-    const layer = profile.layers.find((l) => l.id === b.layerId);
-    if (layer && !layer.variants.some((v) => v.id === b.variantId)) {
-      b.variantId = layer.activeVariant;
-    }
-  }
-
-  function bindingLayer(b: Binding): Layer | undefined {
-    return profile.layers.find((l) => l.id === b.layerId);
-  }
-
   function triggerLabel(t: string): string {
     if (!t) return 'set trigger…';
-    const [kind, name] = [t.slice(0, t.indexOf(':')), t.slice(t.indexOf(':') + 1)];
+    const i = t.indexOf(':');
+    const [kind, name] = [t.slice(0, i), t.slice(i + 1)];
     return (kind === 'pad' ? '🎮 ' : '⌨ ') + name;
   }
 
@@ -300,6 +233,25 @@
   {@html `<style>${RENDERER_CSS}</style>`}
 </svelte:head>
 
+{#snippet frameSlots(layerId: string, variantId: string, voice: boolean)}
+  <div class="slots">
+    {#each (voice ? FRAME_KEYS : (['idle'] as FrameKey[])) as k (k)}
+      {@const key = frameStorageKey(layerId, variantId, k)}
+      {@const isBase = variantId === DEFAULT_VARIANT_ID}
+      <div class="slot" class:dragover={dragOver === key} data-slot={key}
+           role="button" tabindex="0" title="Click or drop a PNG"
+           onclick={() => pickFrame(key)} onkeydown={(e) => e.key === 'Enter' && pickFrame(key)}>
+        <img src={frameUrls[key] ?? placeholder(k)} alt="" class:pixelated={profile.look.pixelated}
+             class:missing={!frameUrls[key] && !isBase}>
+        <div class="name">{k}{frameUrls[key] ? '' : isBase ? ' (placeholder)' : ' (empty)'}</div>
+        {#if frameUrls[key]}
+          <button class="x" title="Remove" onclick={(e) => removeFrame(key, e)}>×</button>
+        {/if}
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
 <main>
   <section class="preview">
     <div class="stage"><div bind:this={stage}></div></div>
@@ -330,110 +282,34 @@
       <span class="row"><input type="range" min="0" max="800" step="10" bind:value={profile.mic.hold}>
       <span class="val">{profile.mic.hold}</span></span></label>
 
-    <h2>Frames</h2>
-    {#each profile.layers as layer, i (layer.id)}
-      <div class="layer" class:card={multiLayer}>
-        {#if multiLayer}
-          <div class="layer-head">
-            <input class="layer-name" bind:value={layer.name} title="Layer name">
-            <button class="icon" title="Bring forward" disabled={i === profile.layers.length - 1}
-                    onclick={() => moveLayer(layer, 1)}>▲</button>
-            <button class="icon" title="Send back" disabled={i === 0}
-                    onclick={() => moveLayer(layer, -1)}>▼</button>
-            <button class="icon" title="Delete layer and its images" onclick={() => removeLayer(layer)}>×</button>
-          </div>
-          <label class="row"><input type="checkbox" bind:checked={layer.visible}> Visible</label>
-          <label class="row"><input type="checkbox" bind:checked={layer.reactsToVoice}> Reacts to voice (talking/blink frames)</label>
-        {/if}
-        {#if multiLayer}
-          {#if layer.variants.length > 1}
-            <div class="variant-row">
-              <select bind:value={layer.activeVariant} title="Active variant">
-                {#each layer.variants as v (v.id)}
-                  <option value={v.id}>{v.name}</option>
-                {/each}
-              </select>
-              {#each layer.variants.filter((v) => v.id === layer.activeVariant) as av (av.id)}
-                <input class="layer-name" bind:value={av.name} title="Variant name">
-              {/each}
-              <button class="icon" title="Add another variant" onclick={() => addVariant(layer)}>+</button>
-              <button class="icon" title="Delete this variant and its images" onclick={() => removeVariant(layer)}>×</button>
-            </div>
-          {:else}
-            <button class="add-variant" title="A variant is an alternate look for this layer — e.g. a controller with different buttons pressed. Bind one to a key or button."
-                    onclick={() => addVariant(layer)}>+ Add variant (alternate look)</button>
-          {/if}
-        {/if}
-        <div class="slots">
-          {#each slotsFor(layer) as k (k)}
-            {@const key = frameStorageKey(layer.id, layer.activeVariant, k)}
-            <div class="slot" class:dragover={dragOver === key} data-slot={key}
-                 role="button" tabindex="0" title="Click or drop an image"
-                 onclick={() => pickFrame(key)} onkeydown={(e) => e.key === 'Enter' && pickFrame(key)}>
-              <img src={frameUrls[key] ?? placeholder(k)} alt="" class:pixelated={profile.look.pixelated}
-                   class:missing={!frameUrls[key] && multiLayer}>
-              <div class="name">{layer.reactsToVoice ? k : 'image'}{frameUrls[key] ? '' : multiLayer ? ' (empty)' : ' (placeholder)'}</div>
-              {#if frameUrls[key]}
-                <button class="x" title="Remove" onclick={(e) => removeFrame(key, e)}>×</button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </div>
-    {/each}
-    <button onclick={addLayer}>+ Add layer</button>
-    <p class="hint">
-      {#if multiLayer}
-        Layers draw bottom to top — later cards appear in front. Use the same canvas size for every image so layers line up.
-      {:else}
-        Only <b>idle</b> is required. Missing blink/talking frames fall back automatically.
-        Add layers for props, outfits, or parts you'll want to trigger separately.
-      {/if}
-    </p>
+    <h2>Avatar</h2>
+    <p class="hint">Your <b>idle</b> and <b>talking</b> frames. Only idle is required — talking and blink fall back to it.</p>
+    {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true)}
 
-    <h2>Bindings</h2>
-    {#each profile.bindings as b (b.id)}
-      <div class="binding">
-        <div class="row">
-          <button class="trigger" class:capturing={capturingId === b.id}
-                  title="Click, then press the key or gamepad button to bind"
-                  onclick={() => (capturingId === b.id ? cancelCapture() : startCapture(b))}>
-            {capturingId === b.id ? 'press a key or button…' : triggerLabel(b.trigger)}
-          </button>
-          <button class="icon" title="Remove binding" onclick={() => removeBinding(b)}>×</button>
+    <h2>Poses</h2>
+    <p class="hint">
+      A pose is a whole alternate look shown while you hold a key or gamepad button —
+      controller reactions, expressions, and so on. Each pose has its own idle/talking frames.
+    </p>
+    {#each poses as pose (pose.id)}
+      <div class="card">
+        <div class="pose-head">
+          {#each main.variants.filter((v) => v.id === pose.id) as v (v.id)}
+            <input class="layer-name" bind:value={v.name} title="Pose name">
+          {/each}
+          <button class="icon" title="Delete pose and its frames" onclick={() => deletePose(pose)}>×</button>
         </div>
-        <div class="row">
-          <select bind:value={b.action} title="What the binding does">
-            <option value="variant">show variant</option>
-            <option value="show">show layer</option>
-            <option value="hide">hide layer</option>
-          </select>
-          <select bind:value={b.layerId} onchange={() => onBindingLayerChange(b)} title="Layer">
-            {#each profile.layers as l (l.id)}
-              <option value={l.id}>{l.name}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="row">
-          {#if b.action === 'variant'}
-            <select bind:value={b.variantId} title="Variant to show">
-              {#each bindingLayer(b)?.variants ?? [] as v (v.id)}
-                <option value={v.id}>{v.name}</option>
-              {/each}
-            </select>
-          {/if}
-          <select bind:value={b.mode} title="While held: active only while pressed">
-            <option value="hold">while held</option>
-            <option value="toggle">toggle</option>
-          </select>
-        </div>
+        <button class="trigger" class:capturing={capturingId === pose.bindingId}
+                title="Click, then press the key or gamepad button that shows this pose"
+                onclick={() => (capturingId === pose.bindingId ? cancelCapture() : capture(pose.bindingId))}>
+          {#if capturingId === pose.bindingId}press a key or button…
+          {:else if pose.trigger}Trigger: {triggerLabel(pose.trigger)}
+          {:else}Set trigger…{/if}
+        </button>
+        {@render frameSlots(main.id, pose.id, true)}
       </div>
     {/each}
-    <button onclick={addBinding}>+ Add binding</button>
-    <p class="hint">
-      Bindings listen globally — they work while you're in your game or OBS.
-      Only the keys and buttons you bind here are read; everything else you type is ignored.
-    </p>
+    <button onclick={addPoseAndCapture}>+ Add pose</button>
 
     <h2>Look</h2>
     <label>Scale
@@ -442,6 +318,11 @@
     <label class="row"><input type="checkbox" bind:checked={profile.look.pixelated}> Crisp pixels (nearest-neighbor)</label>
     <label class="row"><input type="checkbox" bind:checked={profile.look.bounce}> Bounce on talk start</label>
     <label class="row"><input type="checkbox" bind:checked={profile.look.blink}> Auto-blink</label>
+    {#if profile.look.blink}
+      <label>Blink every
+        <span class="row"><input type="range" min="1" max="12" step="0.5" bind:value={profile.look.blinkEvery}>
+        <span class="val">{profile.look.blinkEvery}s</span></span></label>
+    {/if}
 
     <h2>OBS</h2>
     <p class="hint">Add a <b>Browser</b> source with this URL. Transparent background, no chroma key needed. Keep this app running.</p>
@@ -493,14 +374,13 @@
   .status { font-size: 11px; color: #7fe0a8; margin-top: 4px; min-height: 14px; word-break: break-word; }
   .status.error { color: #e08a8a; }
   .meter { width: 100%; height: 18px; border-radius: 4px; margin-top: 6px; }
-  .layer.card { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
-  .layer-head { display: flex; gap: 4px; align-items: center; }
-  .variant-row { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
-  .variant-row select { flex: 1; margin-top: 0; }
-  .add-variant { margin-top: 6px; font-size: 12px; }
+  .card { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
+  .pose-head { display: flex; gap: 4px; align-items: center; }
   .layer-name { flex: 1; min-width: 0; padding: 3px 6px; background: #12141a; color: #d8dae0;
     border: 1px solid #333; border-radius: 4px; }
   button.icon { width: 26px; padding: 3px 0; margin-top: 0; flex: none; }
+  .trigger { text-align: left; margin-top: 6px; }
+  .trigger.capturing { border-color: #e0b455; color: #f0cd7e; }
   .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
   .slot {
     position: relative; border: 1px dashed #555; border-radius: 6px; padding: 6px; text-align: center;
@@ -514,12 +394,6 @@
   .slot .name { font-size: 11px; color: #9aa0ad; }
   .slot .x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; padding: 0;
     line-height: 1; font-size: 12px; margin: 0; }
-  .binding { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
-  .binding .row { margin-top: 4px; }
-  .binding .row:first-child { margin-top: 0; }
-  .binding select { margin-top: 0; }
-  .trigger { flex: 1; margin-top: 0; text-align: left; }
-  .trigger.capturing { border-color: #e0b455; color: #f0cd7e; }
   .hint { color: #6f7480; font-size: 11px; margin: 6px 0; }
   .hint a { color: #6ea8fe; }
   .url { flex: 1; background: #12141a; padding: 5px 7px; border-radius: 4px; font-size: 12px; user-select: all; }
