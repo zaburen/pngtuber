@@ -81,6 +81,10 @@ export class Avatar {
       return {
         id: l.id,
         url: visible ? this.resolve(l.id, variant, l.reactsToVoice ? want : 'idle') : null,
+        offsetX: l.offset?.x ?? 0,
+        offsetY: l.offset?.y ?? 0,
+        // The voice-reactive main layer always bounces; props bounce only if they follow.
+        follow: l.reactsToVoice || (l.followBounce ?? true),
       };
     });
     return {

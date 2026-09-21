@@ -2,42 +2,24 @@
 // Copyright (c) 2026 zaburen
 
 /**
- * "Props" are the user-facing concept for elements that do NOT inherit the
- * voice states — backgrounds and overlay accessories (see docs/ux-spec.md).
- * They coexist with the avatar and with each other (a hat and glasses at once),
- * are placed behind or in front of it, and are either always shown or shown
- * while a trigger is held.
+ * "Layers" (called props in the code for the non-character layers) are the
+ * v1 way to add backgrounds and overlay accessories (see docs/ux-spec.md).
+ * They coexist with the character and each other, sit behind or in front of it,
+ * can move with it on talk, and nudge into position. On/off is just the layer's
+ * `visible` flag (no triggers in v1 — the input engine is shelved for 2.0).
  *
- * Under the hood a prop is a non-voice layer (`reactsToVoice: false`) drawn in
- * the layer stack. "Always shown" = the layer is visible with no binding;
- * "show while held" = the layer is hidden by default plus a hold show-binding.
- * This module is the single tested translation the UI and tests share.
+ * Under the hood a layer is a non-voice layer (`reactsToVoice: false`) with one
+ * image. This module is the single tested translation the UI and tests share.
  */
 import { mainLayer } from './poses';
-import {
-  DEFAULT_VARIANT_ID,
-  newBindingId,
-  newLayerId,
-  type Binding,
-  type Layer,
-  type Profile,
-} from './types';
+import { DEFAULT_VARIANT_ID, newLayerId, type Layer, type Profile } from './types';
 
 export interface Prop {
   /** The layer id backing this prop. */
   id: string;
   name: string;
-  /** Drawn behind the avatar (a background) rather than in front. */
+  /** Drawn behind the character (a background) rather than in front. */
   behind: boolean;
-  /** Trigger from the prop's show-binding; '' means always shown. */
-  trigger: string;
-  bindingId: string | null;
-}
-
-function propBinding(profile: Profile, layerId: string): Binding | undefined {
-  return profile.bindings.find(
-    (b) => b.layerId === layerId && (b.action === 'show' || b.action === 'hide'),
-  );
 }
 
 /** Props are every non-main, non-voice layer. */
@@ -47,13 +29,10 @@ export function listProps(profile: Profile): Prop[] {
   return profile.layers
     .map((l, i) => ({ l, i }))
     .filter(({ l }) => l.id !== main.id && !l.reactsToVoice)
-    .map(({ l, i }) => {
-      const b = propBinding(profile, l.id);
-      return { id: l.id, name: l.name, behind: i < mainIndex, trigger: b?.trigger ?? '', bindingId: b?.id ?? null };
-    });
+    .map(({ l, i }) => ({ id: l.id, name: l.name, behind: i < mainIndex }));
 }
 
-/** Place `layer` behind the avatar (before main) or in front (top of stack). */
+/** Place `layer` behind the character (before main) or in front (top of stack). */
 function place(profile: Profile, layer: Layer, behind: boolean): void {
   profile.layers = profile.layers.filter((l) => l.id !== layer.id);
   if (behind) profile.layers.splice(profile.layers.indexOf(mainLayer(profile)), 0, layer);
@@ -63,20 +42,21 @@ function place(profile: Profile, layer: Layer, behind: boolean): void {
 export function addProp(profile: Profile, behind = false): Prop {
   const layer: Layer = {
     id: newLayerId(),
-    name: behind ? 'background' : 'prop',
+    name: behind ? 'background' : 'accessory',
     reactsToVoice: false,
-    visible: true, // always-on by default; a trigger hides-then-shows it
+    visible: true,
     variants: [{ id: DEFAULT_VARIANT_ID, name: 'default' }],
     activeVariant: DEFAULT_VARIANT_ID,
+    followBounce: !behind, // accessories ride the face; backgrounds stay put
+    offset: { x: 0, y: 0 },
   };
   place(profile, layer, behind);
-  return { id: layer.id, name: layer.name, behind, trigger: '', bindingId: null };
+  return { id: layer.id, name: layer.name, behind };
 }
 
-/** Remove a prop: its layer and any bindings. Frame files cleared by caller. */
+/** Remove a layer. Frame files cleared by caller. */
 export function removeProp(profile: Profile, layerId: string): void {
   profile.layers = profile.layers.filter((l) => l.id !== layerId);
-  profile.bindings = profile.bindings.filter((b) => b.layerId !== layerId);
 }
 
 export function renameProp(profile: Profile, layerId: string, name: string): void {
@@ -90,26 +70,13 @@ export function setPropBehind(profile: Profile, layerId: string, behind: boolean
 }
 
 /**
- * Make the prop trigger-controlled: hide it by default and attach a hold
- * show-binding (creating one if needed). Returns the binding id so the caller
- * can arm trigger capture. Idempotent.
+ * Reorder a layer among its neighbours on the same side of the character.
+ * Arrows never cross the character (use the behind/front toggle for that).
  */
-export function ensurePropBinding(profile: Profile, layerId: string): string {
-  const layer = profile.layers.find((l) => l.id === layerId);
-  if (layer) layer.visible = false;
-  let b = propBinding(profile, layerId);
-  if (!b) {
-    b = { id: newBindingId(), trigger: '', layerId, action: 'show', variantId: '', mode: 'hold' };
-    profile.bindings.push(b);
-  }
-  return b.id;
-}
-
-/** Revert to always-shown: drop the binding and make the layer visible. */
-export function clearPropTrigger(profile: Profile, layerId: string): void {
-  const layer = profile.layers.find((l) => l.id === layerId);
-  if (layer) layer.visible = true;
-  profile.bindings = profile.bindings.filter(
-    (b) => !(b.layerId === layerId && (b.action === 'show' || b.action === 'hide')),
-  );
+export function moveProp(profile: Profile, layerId: string, dir: -1 | 1): void {
+  const i = profile.layers.findIndex((l) => l.id === layerId);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= profile.layers.length) return;
+  if (profile.layers[j].id === mainLayer(profile).id) return; // don't cross the character
+  [profile.layers[i], profile.layers[j]] = [profile.layers[j], profile.layers[i]];
 }

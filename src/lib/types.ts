@@ -22,6 +22,11 @@ export interface Layer {
   variants: Variant[];
   /** id of the variant currently shown (and edited). */
   activeVariant: string;
+  /** Non-voice prop layers: bounce along with the character on talk (accessories
+   * that ride the face). Ignored for the voice-reactive main layer (always bounces). */
+  followBounce?: boolean;
+  /** Non-voice prop layers: pixel nudge from center so an accessory lines up. */
+  offset?: { x: number; y: number };
 }
 
 export interface Variant {
@@ -112,6 +117,11 @@ export const DEFAULT_PROFILE: Profile = {
 export interface RenderLayer {
   id: string;
   url: string | null;
+  /** Pixel nudge from center (source pixels, scaled at draw time). */
+  offsetX: number;
+  offsetY: number;
+  /** Bounce with the character on talk (the main layer and following props). */
+  follow: boolean;
 }
 
 /** Everything an overlay needs to draw one frame. Sent over the WebSocket. */
@@ -147,6 +157,8 @@ export function mergeProfile(stored: unknown): Profile {
             activeVariant: variants.some((v) => v.id === l.activeVariant)
               ? l.activeVariant!
               : variants[0].id,
+            followBounce: l.followBounce ?? true,
+            offset: { x: l.offset?.x ?? 0, y: l.offset?.y ?? 0 },
           };
         })
       : // pre-layer profiles (M1) had a single implicit avatar

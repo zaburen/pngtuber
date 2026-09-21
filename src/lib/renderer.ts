@@ -6,7 +6,7 @@
  * overlay page. Keeps one <img> per render layer inside `container`, stacked
  * bottom → top, all centered on the same origin.
  */
-import type { FrameKey, RenderState } from './types';
+import type { FrameKey, RenderLayer, RenderState } from './types';
 
 export class Renderer {
   /** layer id → its img element (insertion order = stacking order). */
@@ -22,8 +22,8 @@ export class Renderer {
     this.scale = s.scale;
     this.container.classList.toggle('pixelated', s.pixelated);
 
-    const want = s.placeholder
-      ? [{ id: '__placeholder', url: placeholder(s.placeholderFrame) }]
+    const want: RenderLayer[] = s.placeholder
+      ? [{ id: '__placeholder', url: placeholder(s.placeholderFrame), offsetX: 0, offsetY: 0, follow: true }]
       : s.layers;
 
     // Drop imgs for layers that no longer exist.
@@ -34,6 +34,9 @@ export class Renderer {
         this.imgs.delete(id);
       }
     }
+
+    const bounced = s.bounceSeq !== this.lastBounce;
+    this.lastBounce = s.bounceSeq;
 
     for (const l of want) {
       let img = this.imgs.get(l.id);
@@ -53,19 +56,24 @@ export class Renderer {
         if (url) img.src = url;
       }
       img.classList.toggle('active', !!url);
+      img.dataset.ox = String(l.offsetX);
+      img.dataset.oy = String(l.offsetY);
       this.applyScale(img);
-    }
-
-    if (s.bounceSeq !== this.lastBounce) {
-      this.lastBounce = s.bounceSeq;
-      this.container.classList.remove('bounce');
-      void this.container.offsetWidth; // restart the CSS animation
-      this.container.classList.add('bounce');
+      // Bounce only the layers that follow the character (main + following props).
+      if (bounced && l.follow) {
+        img.classList.remove('bounce');
+        void img.offsetWidth; // restart the CSS animation
+        img.classList.add('bounce');
+      }
     }
   }
 
   private applyScale(img: HTMLImageElement) {
     if (img.naturalWidth) img.style.width = img.naturalWidth * this.scale + 'px';
+    const ox = Number(img.dataset.ox ?? 0) * this.scale;
+    const oy = Number(img.dataset.oy ?? 0) * this.scale;
+    // `translate` centers + nudges; `transform` is left free for the bounce keyframes.
+    img.style.translate = `calc(-50% + ${ox}px) calc(-50% + ${oy}px)`;
   }
 }
 
@@ -94,6 +102,6 @@ export const RENDERER_CSS = `
 .avatar img { display: none; position: absolute; left: 50%; top: 50%; translate: -50% -50%; }
 .avatar.pixelated img { image-rendering: pixelated; }
 .avatar img.active { display: block; }
-.avatar.bounce { animation: avatar-bounce 0.22s ease-out; }
+.avatar img.bounce { animation: avatar-bounce 0.22s ease-out; }
 @keyframes avatar-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(-14px); } 100% { transform: translateY(0); } }
 `;
