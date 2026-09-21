@@ -81,7 +81,7 @@ export function placeholder(k: FrameKey): string {
   x.fillStyle = '#5a3b1e'; x.fillRect(8, 4, 16, 4); // hair
   x.fillStyle = '#3a6ea5'; x.fillRect(6, 22, 20, 10); // body
   x.fillStyle = '#222';
-  if (k.includes('blink')) { x.fillRect(11, 13, 3, 1); x.fillRect(18, 13, 3, 1); }
+  if (k.includes('timed')) { x.fillRect(11, 13, 3, 1); x.fillRect(18, 13, 3, 1); }
   else { x.fillRect(11, 11, 3, 3); x.fillRect(18, 11, 3, 3); }
   if (k.startsWith('talking')) { x.fillStyle = '#7a2020'; x.fillRect(13, 17, 6, 4); }
   else { x.fillRect(13, 18, 6, 1); }

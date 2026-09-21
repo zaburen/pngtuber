@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 zaburen
 
-export const FRAME_KEYS = ['idle', 'talking', 'idle-blink', 'talking-blink'] as const;
+export const FRAME_KEYS = ['idle', 'talking', 'idle-timed', 'talking-timed'] as const;
 export type FrameKey = (typeof FRAME_KEYS)[number];
 
 export const OVERLAY_PORT = 8737;
@@ -70,9 +70,10 @@ export interface Profile {
     scale: number;
     pixelated: boolean;
     bounce: boolean;
-    blink: boolean;
-    /** Average seconds between blinks (actual interval jitters around this). */
-    blinkEvery: number;
+    /** Play the periodic "timed" frame variant (blink/twitch/sway). */
+    timed: boolean;
+    /** Average seconds between timed frames (actual interval jitters around this). */
+    timedEvery: number;
   };
   /** The avatar stack. Always at least one layer. */
   layers: Layer[];
@@ -93,7 +94,7 @@ function defaultVariants(): Variant[] {
 export const DEFAULT_PROFILE: Profile = {
   version: 1,
   mic: { deviceId: '', enabled: true, threshold: 0.12, gain: 2.0, hold: 180 },
-  look: { scale: 4, pixelated: true, bounce: true, blink: true, blinkEvery: 4.5 },
+  look: { scale: 4, pixelated: true, bounce: true, timed: true, timedEvery: 4.5 },
   layers: [
     {
       id: BASE_LAYER_ID,

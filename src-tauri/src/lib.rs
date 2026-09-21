@@ -37,6 +37,7 @@ fn frame_key_ok(key: &str) -> bool {
 /// model omitted the variant (`main.idle.png`). Targets match the frontend's
 /// BASE_LAYER_ID ('main') and DEFAULT_VARIANT_ID ('default') in types.ts.
 fn migrate_frame_files(frames_dir: &Path) {
+    // M1 flat (`idle.png`) and first layer-model (`main.idle.png`) → main.default.<frame>.
     for frame in ["idle", "talking", "idle-blink", "talking-blink"] {
         for old_name in [format!("{frame}.png"), format!("main.{frame}.png")] {
             let old = frames_dir.join(&old_name);
@@ -45,6 +46,29 @@ fn migrate_frame_files(frames_dir: &Path) {
                 match std::fs::rename(&old, &new) {
                     Ok(()) => log::info!("migrated frame {old_name} -> main.default.{frame}.png"),
                     Err(e) => log::warn!("frame migration failed for {old_name}: {e}"),
+                }
+            }
+        }
+    }
+    // "blink" frames were renamed to "timed" (v1): <prefix>.idle-blink.png ->
+    // <prefix>.idle-timed.png (and talking-blink), across all layers/variants.
+    if let Ok(entries) = std::fs::read_dir(frames_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let renamed = name
+                .strip_suffix(".idle-blink.png")
+                .map(|b| format!("{b}.idle-timed.png"))
+                .or_else(|| {
+                    name.strip_suffix(".talking-blink.png")
+                        .map(|b| format!("{b}.talking-timed.png"))
+                });
+            if let Some(new_name) = renamed {
+                let new = frames_dir.join(&new_name);
+                if !new.exists() {
+                    match std::fs::rename(entry.path(), &new) {
+                        Ok(()) => log::info!("migrated frame {name} -> {new_name}"),
+                        Err(e) => log::warn!("frame migration failed for {name}: {e}"),
+                    }
                 }
             }
         }

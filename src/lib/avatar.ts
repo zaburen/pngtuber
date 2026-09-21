@@ -2,7 +2,7 @@
 // Copyright (c) 2026 zaburen
 
 /**
- * Avatar state machine: mic level → talking, timer → blink. Resolves the
+ * Avatar state machine: mic level → talking, timer → timed frame. Resolves the
  * current voice state against the layer stack and produces a RenderState
  * whenever something visible changes.
  */
@@ -26,10 +26,10 @@ export class Avatar {
   /** Smoothed, gain-applied mic level for the meter. */
   level = 0;
   talking = false;
-  private blinking = false;
+  private timed = false;
   private lastLoudAt = 0;
   private bounceSeq = 0;
-  private blinkTimer: ReturnType<typeof setTimeout> | null = null;
+  private timedTimer: ReturnType<typeof setTimeout> | null = null;
   private raf = 0;
   private lastSent = '';
 
@@ -41,7 +41,7 @@ export class Avatar {
   }
 
   start() {
-    this.scheduleBlink();
+    this.scheduleTimed();
     const tick = (now: number) => {
       this.updateTalking(now);
       this.raf = requestAnimationFrame(tick);
@@ -52,7 +52,7 @@ export class Avatar {
 
   stop() {
     cancelAnimationFrame(this.raf);
-    if (this.blinkTimer) clearTimeout(this.blinkTimer);
+    if (this.timedTimer) clearTimeout(this.timedTimer);
     this.mic.stop();
   }
 
@@ -66,7 +66,7 @@ export class Avatar {
   }
 
   get voiceState(): FrameKey {
-    return ((this.talking ? 'talking' : 'idle') + (this.blinking ? '-blink' : '')) as FrameKey;
+    return ((this.talking ? 'talking' : 'idle') + (this.timed ? '-timed' : '')) as FrameKey;
   }
 
   state(): RenderState {
@@ -95,10 +95,10 @@ export class Avatar {
 
   /**
    * Pick the image a layer shows for a voice state, falling back through
-   * missing frames: no blink variant → non-blink, no talking → idle.
+   * missing frames: no timed variant → non-timed, no talking → idle.
    */
   private resolve(layerId: string, variantId: string, want: FrameKey): string | null {
-    const chain: FrameKey[] = want.includes('blink')
+    const chain: FrameKey[] = want.includes('timed')
       ? [want, want.startsWith('talking') ? 'talking' : 'idle', 'idle']
       : [want, 'idle'];
     for (const f of chain) {
@@ -128,20 +128,20 @@ export class Avatar {
     this.emit();
   }
 
-  private scheduleBlink() {
-    // Jitter ±40% around the configured average so blinks don't feel metronomic.
-    const avg = Math.max(0.5, this.profile.look.blinkEvery) * 1000;
+  private scheduleTimed() {
+    // Jitter ±40% around the configured average so it doesn't feel metronomic.
+    const avg = Math.max(0.5, this.profile.look.timedEvery) * 1000;
     const wait = avg * (0.6 + Math.random() * 0.8);
-    this.blinkTimer = setTimeout(() => {
-      if (this.profile.look.blink) {
-        this.blinking = true;
+    this.timedTimer = setTimeout(() => {
+      if (this.profile.look.timed) {
+        this.timed = true;
         this.emit();
         setTimeout(() => {
-          this.blinking = false;
+          this.timed = false;
           this.emit();
         }, 150);
       }
-      this.scheduleBlink();
+      this.scheduleTimed();
     }, wait);
   }
 }

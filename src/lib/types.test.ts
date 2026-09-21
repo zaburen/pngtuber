@@ -64,6 +64,6 @@ describe('mergeProfile', () => {
 
 describe('frameStorageKey', () => {
   it('joins layer, variant and frame with dots', () => {
-    expect(frameStorageKey('main', 'default', 'idle-blink')).toBe('main.default.idle-blink');
+    expect(frameStorageKey('main', 'default', 'idle-timed')).toBe('main.default.idle-timed');
   });
 });

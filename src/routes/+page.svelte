@@ -313,7 +313,7 @@
       <span class="val">{profile.mic.hold}</span></span></label>
 
     <h2>Avatar</h2>
-    <p class="hint">Your <b>idle</b> and <b>talking</b> frames. Only idle is required — talking and blink fall back to it.</p>
+    <p class="hint">Your <b>idle</b> and <b>talking</b> frames. Only idle is required — talking and the timed frames fall back to it.</p>
     {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true, true)}
 
     <h2>Poses</h2>
@@ -384,11 +384,11 @@
       <span class="val">{profile.look.scale}x</span></span></label>
     <label class="row"><input type="checkbox" bind:checked={profile.look.pixelated}> Crisp pixels (nearest-neighbor)</label>
     <label class="row"><input type="checkbox" bind:checked={profile.look.bounce}> Bounce on talk start</label>
-    <label class="row"><input type="checkbox" bind:checked={profile.look.blink}> Auto-blink</label>
-    {#if profile.look.blink}
-      <label>Blink every
-        <span class="row"><input type="range" min="1" max="12" step="0.5" bind:value={profile.look.blinkEvery}>
-        <span class="val">{profile.look.blinkEvery}s</span></span></label>
+    <label class="row"><input type="checkbox" bind:checked={profile.look.timed}> Timed frame (blink / twitch / sway)</label>
+    {#if profile.look.timed}
+      <label>Timed every
+        <span class="row"><input type="range" min="1" max="12" step="0.5" bind:value={profile.look.timedEvery}>
+        <span class="val">{profile.look.timedEvery}s</span></span></label>
     {/if}
 
     <h2>OBS</h2>
