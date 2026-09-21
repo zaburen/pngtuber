@@ -192,9 +192,11 @@ pub fn run() {
             log::info!("profile dir: {}", dir.display());
             let shared = Shared::new(dir);
             tauri::async_runtime::spawn(server::run(shared.clone(), server::DEFAULT_PORT));
+            // Global input (keyboard/gamepad) is shelved for v1 — layers toggle in the
+            // UI, so we don't run a global hook. Re-enable these for 2.0 hotkeys:
+            //   input::spawn_keyboard(app.handle().clone(), input_filter.clone());
+            //   input::spawn_gamepad(app.handle().clone(), input_filter.clone());
             let input_filter = input::SharedFilter::default();
-            input::spawn_keyboard(app.handle().clone(), input_filter.clone());
-            input::spawn_gamepad(app.handle().clone(), input_filter.clone());
             app.manage(AppState { shared, input_filter });
             Ok(())
         })

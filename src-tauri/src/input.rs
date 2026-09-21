@@ -3,6 +3,9 @@
 
 //! Global input listeners: keyboard (rdev) and gamepad (gilrs).
 //!
+//! Shelved for v1 (not spawned; see lib.rs). Kept intact for 2.0 hotkey/gamepad
+//! layer triggers, hence the allow(dead_code).
+//!
 //! Privacy design — this is the keylogger-shaped part of the app, so it is
 //! deliberately narrow: every event is matched against the set of triggers
 //! the frontend has registered as bound and DROPPED unless it matches.
@@ -10,6 +13,7 @@
 //! exception is capture mode (`set_trigger_capture`), which the binding
 //! editor turns on to learn the next key/button the user presses; it
 //! forwards exactly one press and switches itself off.
+#![allow(dead_code)]
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};

@@ -5,22 +5,12 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { listen } from '@tauri-apps/api/event';
   import { Avatar } from '$lib/avatar';
-  import { BindingEngine } from '$lib/bindings';
   import { Mic } from '$lib/mic';
   import { Renderer, RENDERER_CSS, placeholder } from '$lib/renderer';
   import * as backend from '$lib/backend';
-  import { addPose, listPoses, mainLayer, removePose, type Pose } from '$lib/poses';
-  import {
-    addProp,
-    clearPropTrigger,
-    ensurePropBinding,
-    listProps,
-    removeProp,
-    setPropBehind,
-    type Prop,
-  } from '$lib/props';
+  import { mainLayer } from '$lib/poses';
+  import { addProp, moveProp, removeProp, setPropBehind } from '$lib/props';
   import {
     DEFAULT_VARIANT_ID,
     FRAME_KEYS,
@@ -28,6 +18,7 @@
     frameStorageKey,
     mergeProfile,
     type FrameKey,
+    type Layer,
     type Profile,
   } from '$lib/types';
 
@@ -41,18 +32,18 @@
   let profileDir = $state('');
   let copied = $state(false);
   let ready = $state(false);
-  /** Binding id currently waiting for a key/button press, if any. */
-  let capturingId: string | null = $state(null);
+  /** Layer id whose delete is awaiting confirmation. */
+  let confirmingDelete: string | null = $state(null);
 
-  const engine = new BindingEngine();
   let avatar: Avatar;
   let stage: HTMLDivElement;
   let meter: HTMLCanvasElement;
 
   const frameUrls = $derived(backend.frameUrls(present, frameVersion));
   const main = $derived(mainLayer(profile));
-  const poses = $derived(listPoses(profile));
-  const props = $derived(listProps(profile));
+  const mainIndex = $derived(profile.layers.indexOf(main));
+  // The prop layers (everything that isn't the voice-reactive character), as live objects.
+  const propLayers = $derived(profile.layers.filter((l) => l.id !== main.id && !l.reactsToVoice));
 
   onMount(() => {
     let cleanup = () => {};
@@ -83,20 +74,11 @@
         if (key && file) importFrame(key, file);
       });
 
-      const unTrigger = await listen<{ trigger: string; down: boolean }>('input-trigger', (e) => {
-        if (engine.handle(profile.bindings, e.payload.trigger, e.payload.down)) applyOverrides();
-      });
-      const unCapture = await listen<{ trigger: string }>('input-capture', (e) => {
-        const b = profile.bindings.find((x) => x.id === capturingId);
-        capturingId = null;
-        if (b) b.trigger = e.payload.trigger;
-      });
-
       let raf = requestAnimationFrame(function draw() {
         drawMeter();
         raf = requestAnimationFrame(draw);
       });
-      cleanup = () => { unlisten(); unTrigger(); unCapture(); cancelAnimationFrame(raf); avatar.stop(); };
+      cleanup = () => { unlisten(); cancelAnimationFrame(raf); avatar.stop(); };
     })();
     return () => cleanup();
   });
@@ -106,28 +88,12 @@
   $effect(() => {
     const snapshot = JSON.stringify(profile);
     if (!ready) return;
-    engine.prune(profile.bindings);
-    applyOverrides();
+    avatar.emit();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       backend.saveProfile(JSON.parse(snapshot)).catch((e) => console.error('save failed', e));
     }, 300);
   });
-
-  // Tell Rust which triggers to forward; everything else stays filtered out.
-  const boundTriggers = $derived(
-    [...new Set(profile.bindings.map((b) => b.trigger).filter(Boolean))].sort(),
-  );
-  $effect(() => {
-    const triggers = boundTriggers;
-    if (!ready) return;
-    backend.setBoundTriggers(triggers).catch((e) => console.error('set triggers failed', e));
-  });
-
-  function applyOverrides() {
-    avatar.overrides = engine.overrides(profile.bindings);
-    avatar.emit();
-  }
 
   $effect(() => {
     if (!ready) return;
@@ -162,58 +128,16 @@
     frameVersion++;
   }
 
-  function addPoseAndCapture() {
-    const pose = addPose(profile);
-    capture(pose.bindingId);
-  }
-
-  async function deletePose(pose: Pose) {
-    if (capturingId === pose.bindingId) cancelCapture();
-    for (const f of FRAME_KEYS) {
-      const key = frameStorageKey(main.id, pose.id, f);
-      if (frameUrls[key]) present = await backend.clearFrame(key);
-    }
-    removePose(profile, pose.id);
-    frameVersion++;
-  }
-
-  function addPropUI() {
+  function addLayer() {
     addProp(profile);
   }
 
-  async function deleteProp(prop: Prop) {
-    if (capturingId === prop.bindingId) cancelCapture();
-    const key = frameStorageKey(prop.id, DEFAULT_VARIANT_ID, 'idle');
+  async function deleteLayer(layer: Layer) {
+    confirmingDelete = null;
+    const key = frameStorageKey(layer.id, DEFAULT_VARIANT_ID, 'idle');
     if (frameUrls[key]) present = await backend.clearFrame(key);
-    removeProp(profile, prop.id);
+    removeProp(profile, layer.id);
     frameVersion++;
-  }
-
-  function startPropCapture(prop: Prop) {
-    capture(prop.bindingId ?? ensurePropBinding(profile, prop.id));
-  }
-
-  function clearPropTriggerUI(prop: Prop) {
-    if (capturingId === prop.bindingId) cancelCapture();
-    clearPropTrigger(profile, prop.id);
-  }
-
-  function capture(bindingId: string | null) {
-    if (!bindingId) return;
-    capturingId = bindingId;
-    backend.setTriggerCapture(true).catch((e) => console.error('capture failed', e));
-  }
-
-  function cancelCapture() {
-    capturingId = null;
-    backend.setTriggerCapture(false).catch((e) => console.error('capture failed', e));
-  }
-
-  function triggerLabel(t: string): string {
-    if (!t) return 'set trigger…';
-    const i = t.indexOf(':');
-    const [kind, name] = [t.slice(0, i), t.slice(i + 1)];
-    return (kind === 'pad' ? '🎮 ' : '⌨ ') + name;
   }
 
   async function startMic() {
@@ -312,71 +236,52 @@
       <span class="row"><input type="range" min="0" max="800" step="10" bind:value={profile.mic.hold}>
       <span class="val">{profile.mic.hold}</span></span></label>
 
-    <h2>Avatar</h2>
+    <h2>Character</h2>
     <p class="hint">Your <b>idle</b> and <b>talking</b> frames. Only idle is required — talking and the timed frames fall back to it.</p>
     {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true, true)}
 
-    <h2>Poses</h2>
+    <h2>Layers</h2>
     <p class="hint">
-      A pose is a whole alternate look shown while you hold a key or gamepad button —
-      controller reactions, expressions, and so on. Each pose has its own idle/talking frames.
+      Backgrounds and accessories that stack on the character — glasses, a hat, a background.
+      Toggle each on/off, order them, and choose whether they move with the character.
     </p>
-    {#each poses as pose (pose.id)}
+    {#each propLayers as layer (layer.id)}
+      {@const i = profile.layers.indexOf(layer)}
       <div class="card">
         <div class="pose-head">
-          {#each main.variants.filter((v) => v.id === pose.id) as v (v.id)}
-            <input class="layer-name" bind:value={v.name} title="Pose name">
-          {/each}
-          <button class="icon" title="Delete pose and its frames" onclick={() => deletePose(pose)}>×</button>
+          <input class="layer-name" bind:value={layer.name} title="Layer name">
+          <button class="icon" title="Move up" disabled={i + 1 >= profile.layers.length || profile.layers[i + 1].id === main.id}
+                  onclick={() => moveProp(profile, layer.id, 1)}>▲</button>
+          <button class="icon" title="Move down" disabled={i - 1 < 0 || profile.layers[i - 1].id === main.id}
+                  onclick={() => moveProp(profile, layer.id, -1)}>▼</button>
+          <button class="icon" title="Delete layer and its image" onclick={() => (confirmingDelete = layer.id)}>×</button>
         </div>
-        <button class="trigger" class:capturing={capturingId === pose.bindingId}
-                title="Click, then press the key or gamepad button that shows this pose"
-                onclick={() => (capturingId === pose.bindingId ? cancelCapture() : capture(pose.bindingId))}>
-          {#if capturingId === pose.bindingId}press a key or button…
-          {:else if pose.trigger}Trigger: {triggerLabel(pose.trigger)}
-          {:else}Set trigger…{/if}
-        </button>
-        {@render frameSlots(main.id, pose.id, true, false)}
-      </div>
-    {/each}
-    <button onclick={addPoseAndCapture}>+ Add pose</button>
-
-    <h2>Props</h2>
-    <p class="hint">
-      Backgrounds and overlay accessories that sit behind or in front of the avatar and
-      can stack together. Shown always, or only while you hold a key/button.
-    </p>
-    {#each props as prop (prop.id)}
-      <div class="card">
-        <div class="pose-head">
-          {#each profile.layers.filter((l) => l.id === prop.id) as pl (pl.id)}
-            <input class="layer-name" bind:value={pl.name} title="Prop name">
-          {/each}
-          <button class="icon" title="Delete prop and its image" onclick={() => deleteProp(prop)}>×</button>
-        </div>
-        <label class="row">
-          <input type="checkbox" checked={prop.behind}
-                 onchange={(e) => setPropBehind(profile, prop.id, e.currentTarget.checked)}>
-          Behind the avatar (background)
-        </label>
-        {#if prop.trigger || capturingId === prop.bindingId}
-          <div class="row">
-            <button class="trigger" class:capturing={capturingId === prop.bindingId}
-                    title="Click, then press the key or gamepad button that shows this prop"
-                    onclick={() => (capturingId === prop.bindingId ? cancelCapture() : startPropCapture(prop))}>
-              {#if capturingId === prop.bindingId}press a key or button…
-              {:else}While held: {triggerLabel(prop.trigger)}{/if}
-            </button>
-            <button class="icon" title="Show always (remove trigger)" onclick={() => clearPropTriggerUI(prop)}>×</button>
+        {#if confirmingDelete === layer.id}
+          <div class="confirm">
+            Delete “{layer.name}” and its image?
+            <button class="small danger" onclick={() => deleteLayer(layer)}>Delete</button>
+            <button class="small" onclick={() => (confirmingDelete = null)}>Cancel</button>
           </div>
-        {:else}
-          <button class="trigger dim" title="By default a prop is always visible. Click to show it only while a key/button is held."
-                  onclick={() => startPropCapture(prop)}>Always shown — click to trigger it instead</button>
         {/if}
-        {@render frameSlots(prop.id, DEFAULT_VARIANT_ID, false, false)}
+        <label class="row"><input type="checkbox" bind:checked={layer.visible}> Show this layer</label>
+        <label class="row">
+          <input type="checkbox" checked={i < mainIndex}
+                 onchange={(e) => setPropBehind(profile, layer.id, e.currentTarget.checked)}>
+          Behind the character (background)
+        </label>
+        <label class="row"><input type="checkbox" bind:checked={layer.followBounce}> Move with the character (bounce)</label>
+        {#if layer.offset}
+          <label>Nudge
+            <span class="row">
+              x <input class="num" type="number" step="1" bind:value={layer.offset.x}>
+              y <input class="num" type="number" step="1" bind:value={layer.offset.y}>
+            </span>
+          </label>
+        {/if}
+        {@render frameSlots(layer.id, DEFAULT_VARIANT_ID, false, false)}
       </div>
     {/each}
-    <button onclick={addPropUI}>+ Add prop</button>
+    <button onclick={addLayer}>+ Add layer</button>
 
     <h2>Look</h2>
     <label>Scale
@@ -437,6 +342,7 @@
   button:disabled { opacity: 0.4; cursor: default; }
   button.on { border-color: #4caf7d; color: #7fe0a8; }
   button.small { width: auto; margin-top: 0; }
+  button.danger { border-color: #e05555; color: #e88; }
   .val { min-width: 38px; text-align: right; color: #9aa0ad; font-variant-numeric: tabular-nums; }
   .status { font-size: 11px; color: #7fe0a8; margin-top: 4px; min-height: 14px; word-break: break-word; }
   .status.error { color: #e08a8a; }
@@ -446,9 +352,8 @@
   .layer-name { flex: 1; min-width: 0; padding: 3px 6px; background: #12141a; color: #d8dae0;
     border: 1px solid #333; border-radius: 4px; }
   button.icon { width: 26px; padding: 3px 0; margin-top: 0; flex: none; }
-  .trigger { text-align: left; margin-top: 6px; }
-  .trigger.capturing { border-color: #e0b455; color: #f0cd7e; }
-  .trigger.dim { color: #8a8f9c; font-size: 12px; }
+  .confirm { font-size: 12px; color: #e0b0b0; margin: 6px 0; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .num { width: 52px; padding: 3px 5px; background: #12141a; color: #d8dae0; border: 1px solid #333; border-radius: 4px; }
   .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
   .slot {
     position: relative; border: 1px dashed #555; border-radius: 6px; padding: 6px; text-align: center;
