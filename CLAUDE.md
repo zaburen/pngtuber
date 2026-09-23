@@ -8,7 +8,8 @@ Public, cross-platform PNGTuber desktop app (Tauri 2 + SvelteKit/Svelte 5 + TS).
 - `src/routes/+page.svelte` — control panel. Owns the state machine; pushes every `RenderState` to Rust via `publish_state`.
 - `src/routes/overlay/` — OBS page (prerendered to `build/overlay.html`), subscribes to `ws://127.0.0.1:8737/ws`, renders only.
 - `src-tauri/src/server.rs` — axum on 127.0.0.1:8737: `/overlay` + assets (rust-embed of `../build`), `/frames/<key>.png`, `/ws` broadcast.
-- `src-tauri/src/lib.rs` — commands; profile JSON is opaque to Rust (frontend owns schema). Data: `<appData>/profiles/default/{profile.json,frames/}`.
+- `src-tauri/src/lib.rs` — commands; profile JSON is opaque to Rust (frontend owns schema).
+- `src-tauri/src/sets.rs` — avatar **sets**: each set is a whole avatar in `<appData>/profiles/<id>/{profile.json,frames/}`; registry + active set in `profiles/sets.json` (Rust-owned). Bundled default avatars are embedded via rust-embed (`../assets/avatars/`) and seeded into a set on demand. Mic is global (not per-set): `<appData>/global.json`.
 
 ## Why
 
@@ -18,7 +19,7 @@ Public, cross-platform PNGTuber desktop app (Tauri 2 + SvelteKit/Svelte 5 + TS).
 
 ## Roadmap (user-approved 2026-08-23; reshaped 2026-09-12; scoped to lean v1 2026-09-21)
 
-M1 shell + port ✔ → M2a layer model ✔ → M2b global input (`rdev`/`gilrs`, xinput backend) ✔ built but **shelved for v1** (not spawned; kept on branch for 2.0 hotkeys). **v1 = Character + Layers** (see [docs/ux-spec.md](docs/ux-spec.md)): a base character plus independent on/off layers — no poses, no character-swap-on-trigger. Remaining v1: bundle default avatars (PixelLab), merge to `main`, then release (CI builds). Poses/build-your-own-avatar/hotkey-triggers → 2.0+. Check in with user after each.
+M1 shell + port ✔ → M2a layer model ✔ → M2b global input (`rdev`/`gilrs`, xinput backend) ✔ built but **shelved for v1** (not spawned; kept on branch for 2.0 hotkeys). **v1 = Character + Layers** (see [docs/ux-spec.md](docs/ux-spec.md)): a base character plus independent on/off layers — no poses, no character-swap-on-trigger. **v1 feature-complete on `main`**: bundled default avatars (PixelLab), avatar sets (multiple swappable avatars), per-layer sizing + bounce intensity. Now in **M5 (release gate)**: CI (build/test/audit), Dependabot, secret scanning, CSP hardening, then public release. Poses/build-your-own-avatar/hotkey-triggers → 2.0+. Check in with user after each.
 
 Model: avatar = ordered layer stack. UI presents it as the **Character** (main voice-reactive layer; frames idle/talking/idle-timed/talking-timed — "timed" is the periodic blink/twitch/sway, one word in code and UI) and **Layers** (non-voice layers: on/off, z-order, move-with-character, x/y nudge). `src/lib/props.ts` is the tested translation for layer ops; `poses.ts`/`bindings.ts`/`input.rs` remain on the branch but unused by v1.
 
