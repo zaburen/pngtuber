@@ -3,23 +3,36 @@
 
 mod input;
 mod server;
+mod sets;
 
 use server::Shared;
+use sets::{SetEntry, SetsIndex};
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager, State};
+use tauri::{Manager, State};
 
 const PROFILE_FILE: &str = "profile.json";
 const FRAMES_DIR: &str = "frames";
+/// Settings shared across all sets (mic tuning etc.), in `<appData>/global.json`.
+const GLOBAL_FILE: &str = "global.json";
 
 /// Everything the commands need. Profile content is opaque JSON owned by the
 /// frontend; Rust only stores it and serves the frame files next to it.
 struct AppState {
     shared: Shared,
     input_filter: input::SharedFilter,
+    /// `<appData>/profiles` — parent of every set folder plus `sets.json`.
+    profiles_root: PathBuf,
+    /// `<appData>` — holds `global.json` (settings shared across sets).
+    data_dir: PathBuf,
 }
 
 fn profile_dir_sync(shared: &Shared) -> PathBuf {
     shared.profile_dir.blocking_read().clone()
+}
+
+/// Point the frame server + frame commands at a different set's folder.
+fn set_active_dir(shared: &Shared, dir: PathBuf) {
+    *shared.profile_dir.blocking_write() = dir;
 }
 
 /// Frame keys are `<layerId>.<variantId>.<frameKey>` (dots separate the parts).
@@ -171,12 +184,147 @@ fn profile_path(state: State<AppState>) -> String {
     profile_dir_sync(&state.shared).to_string_lossy().into_owned()
 }
 
-fn default_profile_dir(app: &AppHandle) -> PathBuf {
-    app.path()
-        .app_data_dir()
-        .expect("app data dir")
-        .join("profiles")
-        .join("default")
+// --- Sets: each set is a self-contained avatar (its own profile + frames). ---
+
+/// The set registry: which sets exist and which is active.
+#[tauri::command]
+fn list_sets(state: State<AppState>) -> SetsIndex {
+    sets::read_index(&state.profiles_root)
+}
+
+/// Bundled default avatars a new set can be seeded from.
+#[tauri::command]
+fn default_avatars() -> Vec<String> {
+    sets::bundled_names()
+}
+
+/// Overwrite the active set's character frames with a bundled avatar's, leaving
+/// accessory-layer frames untouched. Returns the present frame keys.
+#[tauri::command]
+fn apply_default(state: State<AppState>, name: String) -> Result<Vec<String>, String> {
+    let frames = profile_dir_sync(&state.shared).join(FRAMES_DIR);
+    std::fs::create_dir_all(&frames).map_err(|e| format!("mkdir {}: {e}", frames.display()))?;
+    sets::seed_from_bundled(&frames, &name)?;
+    list_frames_in(&frames)
+}
+
+/// Create a new set. `from` is `blank`, `default:<name>`, or `copy:<setId>`.
+/// Returns the new set's id. Does not switch to it.
+#[tauri::command]
+fn create_set(state: State<AppState>, name: String, from: String) -> Result<String, String> {
+    let mut idx = sets::read_index(&state.profiles_root);
+    let id = sets::gen_id(&idx);
+    sets::create_set_files(&state.profiles_root, &id, &from)?;
+    idx.sets.push(SetEntry { id: id.clone(), name });
+    sets::write_index(&state.profiles_root, &idx)?;
+    Ok(id)
+}
+
+/// Make `id` the active set: the frame server and frame commands follow.
+#[tauri::command]
+fn switch_set(state: State<AppState>, id: String) -> Result<(), String> {
+    if !sets::id_ok(&id) {
+        return Err(format!("invalid set id {id:?}"));
+    }
+    let mut idx = sets::read_index(&state.profiles_root);
+    if !idx.sets.iter().any(|s| s.id == id) {
+        return Err(format!("no set {id:?}"));
+    }
+    idx.active = id.clone();
+    sets::write_index(&state.profiles_root, &idx)?;
+    let dir = sets::set_dir(&state.profiles_root, &id);
+    std::fs::create_dir_all(dir.join(FRAMES_DIR)).map_err(|e| e.to_string())?;
+    migrate_frame_files(&dir.join(FRAMES_DIR));
+    set_active_dir(&state.shared, dir);
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_set(state: State<AppState>, id: String, name: String) -> Result<(), String> {
+    let mut idx = sets::read_index(&state.profiles_root);
+    let Some(entry) = idx.sets.iter_mut().find(|s| s.id == id) else {
+        return Err(format!("no set {id:?}"));
+    };
+    entry.name = name;
+    sets::write_index(&state.profiles_root, &idx)
+}
+
+/// Delete a set (never the last one). Returns the id that is active afterward.
+#[tauri::command]
+fn delete_set(state: State<AppState>, id: String) -> Result<String, String> {
+    if !sets::id_ok(&id) {
+        return Err(format!("invalid set id {id:?}"));
+    }
+    let mut idx = sets::read_index(&state.profiles_root);
+    if idx.sets.len() <= 1 {
+        return Err("can't delete the last set".into());
+    }
+    if !idx.sets.iter().any(|s| s.id == id) {
+        return Err(format!("no set {id:?}"));
+    }
+    idx.sets.retain(|s| s.id != id);
+    sets::remove_set_dir(&state.profiles_root, &id)?;
+    if idx.active == id {
+        idx.active = idx.sets[0].id.clone();
+        let dir = sets::set_dir(&state.profiles_root, &idx.active);
+        std::fs::create_dir_all(dir.join(FRAMES_DIR)).map_err(|e| e.to_string())?;
+        migrate_frame_files(&dir.join(FRAMES_DIR));
+        set_active_dir(&state.shared, dir);
+    }
+    sets::write_index(&state.profiles_root, &idx)?;
+    Ok(idx.active)
+}
+
+/// Settings shared across sets (mic tuning). Opaque JSON owned by the frontend.
+#[tauri::command]
+fn load_global(state: State<AppState>) -> Result<Option<serde_json::Value>, String> {
+    let path = state.data_dir.join(GLOBAL_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map(Some).map_err(|e| format!("parse {}: {e}", path.display()))
+}
+
+#[tauri::command]
+fn save_global(state: State<AppState>, value: serde_json::Value) -> Result<(), String> {
+    std::fs::create_dir_all(&state.data_dir).map_err(|e| e.to_string())?;
+    let path = state.data_dir.join(GLOBAL_FILE);
+    let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Ensure `sets.json` exists and return the active set's directory. Migrates an
+/// existing single `default` profile into the registry, or seeds a fresh
+/// install with a starter avatar so the app is never empty.
+fn init_sets(profiles_root: &Path) -> PathBuf {
+    let mut idx = sets::read_index(profiles_root);
+    if idx.sets.is_empty() {
+        let default_dir = sets::set_dir(profiles_root, "default");
+        let legacy =
+            default_dir.join(PROFILE_FILE).exists() || default_dir.join(FRAMES_DIR).exists();
+        if !legacy {
+            if let Err(e) = sets::create_set_files(profiles_root, "default", "default:cat") {
+                log::warn!("could not seed starter set: {e}");
+                let _ = std::fs::create_dir_all(default_dir.join(FRAMES_DIR));
+            }
+        }
+        idx = SetsIndex {
+            active: "default".into(),
+            sets: vec![SetEntry { id: "default".into(), name: "My avatar".into() }],
+        };
+        if let Err(e) = sets::write_index(profiles_root, &idx) {
+            log::warn!("could not write sets.json: {e}");
+        }
+    }
+    // Repair a dangling active pointer (set removed out from under us).
+    if !idx.sets.iter().any(|s| s.id == idx.active) {
+        if let Some(first) = idx.sets.first() {
+            idx.active = first.id.clone();
+            let _ = sets::write_index(profiles_root, &idx);
+        }
+    }
+    sets::set_dir(profiles_root, &idx.active)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -186,18 +334,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let dir = default_profile_dir(app.handle());
-            std::fs::create_dir_all(dir.join(FRAMES_DIR))?;
-            migrate_frame_files(&dir.join(FRAMES_DIR));
-            log::info!("profile dir: {}", dir.display());
-            let shared = Shared::new(dir);
+            let data_dir = app.path().app_data_dir().expect("app data dir");
+            let profiles_root = data_dir.join("profiles");
+            std::fs::create_dir_all(&profiles_root)?;
+            let active_dir = init_sets(&profiles_root);
+            std::fs::create_dir_all(active_dir.join(FRAMES_DIR))?;
+            migrate_frame_files(&active_dir.join(FRAMES_DIR));
+            log::info!("active set dir: {}", active_dir.display());
+            let shared = Shared::new(active_dir);
             tauri::async_runtime::spawn(server::run(shared.clone(), server::DEFAULT_PORT));
             // Global input (keyboard/gamepad) is shelved for v1 — layers toggle in the
             // UI, so we don't run a global hook. Re-enable these for 2.0 hotkeys:
             //   input::spawn_keyboard(app.handle().clone(), input_filter.clone());
             //   input::spawn_gamepad(app.handle().clone(), input_filter.clone());
             let input_filter = input::SharedFilter::default();
-            app.manage(AppState { shared, input_filter });
+            app.manage(AppState { shared, input_filter, profiles_root, data_dir });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -210,7 +361,16 @@ pub fn run() {
             overlay_url,
             profile_path,
             set_bound_triggers,
-            set_trigger_capture
+            set_trigger_capture,
+            list_sets,
+            default_avatars,
+            apply_default,
+            create_set,
+            switch_set,
+            rename_set,
+            delete_set,
+            load_global,
+            save_global
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
