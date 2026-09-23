@@ -58,6 +58,11 @@ export class Renderer {
         img.alt = '';
         img.draggable = false;
         img.onload = () => { this.applyScale(img!); this.fit(); };
+        // A bounce plays exactly once per talk-start. Drop the class as soon as
+        // the animation ends so it never lingers on the element — otherwise a
+        // later re-render (e.g. a blink swapping the frame) replays the stale
+        // animation, making the avatar bob on every blink after the first word.
+        img.addEventListener('animationend', () => img!.classList.remove('bounce'));
         this.imgs.set(l.id, img);
       }
       // Re-append in order: cheap way to keep DOM order = stack order even
@@ -79,6 +84,10 @@ export class Renderer {
         img.classList.remove('bounce');
         void img.offsetWidth; // restart the CSS animation
         img.classList.add('bounce');
+      } else if (!l.follow) {
+        // Stopped following (e.g. "move with the character" unchecked): drop any
+        // lingering bounce class so the layer settles to rest instead of bobbing on.
+        img.classList.remove('bounce');
       }
     }
     this.fit();
