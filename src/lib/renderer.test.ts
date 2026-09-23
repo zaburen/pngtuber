@@ -18,7 +18,11 @@ function layer(partial: Partial<RenderLayer> & { id: string }): RenderLayer {
   };
 }
 
-function state(layers: RenderLayer[], bounceSeq: number): RenderState {
+function state(
+  layers: RenderLayer[],
+  bounceSeq: number,
+  extra: Partial<RenderState> = {},
+): RenderState {
   return {
     layers,
     placeholder: false,
@@ -27,7 +31,15 @@ function state(layers: RenderLayer[], bounceSeq: number): RenderState {
     pixelated: false,
     bounceSeq,
     bounceScale: 1,
+    ...extra,
   };
+}
+
+/** dataset.url basenames of the imgs in the container, in DOM (stacking) order. */
+function stackOrder(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('img')].map((i) =>
+    ((i as HTMLImageElement).dataset.url ?? '').split('/').pop() ?? '',
+  );
 }
 
 /** The <img> the renderer created for a layer (matched by id in its url). */
@@ -105,5 +117,64 @@ describe('Renderer bounce class lifecycle', () => {
       ),
     );
     expect(img.classList.contains('bounce')).toBe(false);
+  });
+});
+
+describe('Renderer DOM composition', () => {
+  let container: HTMLDivElement;
+  let r: Renderer;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    r = new Renderer(container);
+  });
+
+  it('draws layers bottom-to-top in the state order, and reorders on change', () => {
+    r.render(state([layer({ id: 'a' }), layer({ id: 'b' }), layer({ id: 'c' })], 0));
+    expect(stackOrder(container)).toEqual(['a.png', 'b.png', 'c.png']);
+
+    // Reorder the stack; the DOM order must follow.
+    r.render(state([layer({ id: 'c' }), layer({ id: 'a' }), layer({ id: 'b' })], 0));
+    expect(stackOrder(container)).toEqual(['c.png', 'a.png', 'b.png']);
+  });
+
+  it('adds and removes img elements as layers come and go', () => {
+    r.render(state([layer({ id: 'a' }), layer({ id: 'b' })], 0));
+    expect(container.querySelectorAll('img')).toHaveLength(2);
+
+    // Drop b: its img is removed.
+    r.render(state([layer({ id: 'a' })], 0));
+    expect(stackOrder(container)).toEqual(['a.png']);
+
+    // Add c: a stays, c appears.
+    r.render(state([layer({ id: 'a' }), layer({ id: 'c' })], 0));
+    expect(stackOrder(container)).toEqual(['a.png', 'c.png']);
+  });
+
+  it('marks a layer active only when it has a url (hidden layers are not shown)', () => {
+    r.render(state([layer({ id: 'a', url: 'http://x/a.png' })], 0));
+    const img = container.querySelector('img')!;
+    expect(img.classList.contains('active')).toBe(true);
+
+    // Hidden: no url -> not active (element kept, just not drawn).
+    r.render(state([layer({ id: 'a', url: null })], 0));
+    expect(img.classList.contains('active')).toBe(false);
+  });
+
+  it('toggles the pixelated class on the container per state', () => {
+    r.render(state([layer({ id: 'a' })], 0, { pixelated: true }));
+    expect(container.classList.contains('pixelated')).toBe(true);
+
+    r.render(state([layer({ id: 'a' })], 0, { pixelated: false }));
+    expect(container.classList.contains('pixelated')).toBe(false);
+  });
+
+  it('sets --bounce-amp from bounceScale (the bounce-height slider)', () => {
+    r.render(state([layer({ id: 'a' })], 0, { bounceScale: 1 }));
+    expect(container.style.getPropertyValue('--bounce-amp')).toBe('14px');
+
+    r.render(state([layer({ id: 'a' })], 0, { bounceScale: 2 }));
+    expect(container.style.getPropertyValue('--bounce-amp')).toBe('28px');
   });
 });
