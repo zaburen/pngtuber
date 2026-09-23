@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 zaburen
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Avatar } from './avatar';
-import { mergeProfile, type RenderState } from './types';
+import { mergeProfile, type MicSettings, type RenderState } from './types';
 
 function makeAvatar() {
   const profile = mergeProfile({
@@ -90,5 +90,90 @@ describe('Avatar.state', () => {
     avatar.frames = { 'hat.cap.idle': 'CAP' };
     avatar.overrides = new Map([['hat', { variantId: 'gone' }]]);
     expect(urlOf(avatar.state(), 'hat')).toBe('CAP');
+  });
+});
+
+// A stubbed mic + direct calls into the private tick, so the mic → talking →
+// bounce timing is deterministic (no AudioContext, no requestAnimationFrame).
+interface FakeMic {
+  running: boolean;
+  rms: () => number;
+  stop: () => void;
+}
+function makeTiming(mic: Partial<MicSettings> = {}, look: Record<string, unknown> = {}) {
+  const profile = mergeProfile({
+    layers: [{ id: 'main', name: 'avatar', reactsToVoice: true, visible: true }],
+  });
+  Object.assign(profile.look, look);
+  const states: RenderState[] = [];
+  const av = new Avatar(profile, (s) => states.push(s));
+  av.micSettings = { deviceId: '', enabled: true, threshold: 0.1, gain: 1, hold: 200, ...mic };
+  const fake: FakeMic = { running: true, rms: () => 0, stop() {} };
+  (av as unknown as { mic: FakeMic }).mic = fake;
+  const tick = (now: number) => (av as unknown as { updateTalking(n: number): void }).updateTalking(now);
+  return { av, states, mic: fake, profile, tick };
+}
+
+describe('Avatar mic timing', () => {
+  it('goes talking when loud and bumps bounceSeq once on the idle->talking edge', () => {
+    const { av, states, mic, tick } = makeTiming();
+    mic.rms = () => 0.5;
+    tick(1000);
+    expect(av.talking).toBe(true);
+    expect(states.at(-1)!.bounceSeq).toBe(1); // one bounce fired at talk start
+
+    tick(1016); // still talking: no edge, no new bounce, no emit
+    expect(states.at(-1)!.bounceSeq).toBe(1);
+  });
+
+  it('does not bump bounceSeq when bounce-on-talk is off', () => {
+    const { av, states, mic, tick } = makeTiming({}, { bounce: false });
+    mic.rms = () => 0.5;
+    tick(1000);
+    expect(av.talking).toBe(true);
+    expect(states.at(-1)!.bounceSeq).toBe(0);
+  });
+
+  it('stays idle with the level zeroed when the mic is not running', () => {
+    const { av, mic, tick } = makeTiming();
+    mic.running = false;
+    tick(1000);
+    expect(av.talking).toBe(false);
+    expect(av.level).toBe(0);
+  });
+
+  it('holds "talking" for `hold` ms after the level drops, then goes idle', () => {
+    const { av, mic, tick } = makeTiming({ threshold: 0.1, gain: 1, hold: 200 });
+    mic.rms = () => 0.11; // just over threshold
+    tick(1000);
+    expect(av.talking).toBe(true);
+
+    mic.rms = () => 0; // quiet; level decays below threshold immediately
+    tick(1050); // 50ms since last loud < hold -> still talking
+    expect(av.talking).toBe(true);
+
+    tick(1300); // 300ms since last loud > hold -> idle
+    expect(av.talking).toBe(false);
+  });
+});
+
+describe('Avatar timed (blink) scheduling', () => {
+  it('plays a timed frame on schedule and clears it ~150ms later', () => {
+    vi.useFakeTimers();
+    const rand = vi.spyOn(Math, 'random').mockReturnValue(0.5); // wait = avg * 1.0
+    try {
+      // timedEvery 1s -> avg 1000ms; with random 0.5 the jittered wait is exactly 1000ms.
+      const { av, states } = makeTiming({}, { timed: true, timedEvery: 1 });
+      (av as unknown as { scheduleTimed(): void }).scheduleTimed();
+
+      vi.advanceTimersByTime(1000); // timer fires -> timed frame shown
+      expect(states.at(-1)!.placeholderFrame).toBe('idle-timed');
+
+      vi.advanceTimersByTime(150); // timed clears back to idle
+      expect(states.at(-1)!.placeholderFrame).toBe('idle');
+    } finally {
+      rand.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

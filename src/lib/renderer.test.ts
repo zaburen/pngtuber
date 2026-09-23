@@ -177,4 +177,11 @@ describe('Renderer DOM composition', () => {
     r.render(state([layer({ id: 'a' })], 0, { bounceScale: 2 }));
     expect(container.style.getPropertyValue('--bounce-amp')).toBe('28px');
   });
+
+  it('applies the per-layer nudge scaled by the global scale', () => {
+    r.render(state([layer({ id: 'a', offsetX: 10, offsetY: -5 })], 0, { scale: 2 }));
+    const img = container.querySelector('img')!;
+    // offset (source px) is multiplied by the global scale, added to the centering.
+    expect(img.style.translate).toBe('calc(-50% + 20px) calc(-50% + -10px)');
+  });
 });
