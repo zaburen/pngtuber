@@ -13,6 +13,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: the jobs only read the repo.
+permissions:
+  contents: read
+
 jobs:
   frontend:
     name: Frontend (build, check, test, audit)
@@ -69,8 +73,11 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --locked
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
       - name: cargo audit
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: src-tauri # Cargo.lock lives here, not at repo root
+        working-directory: src-tauri
+        # Fails on actual vulnerabilities. Unmaintained/unsound advisories in
+        # Tauri's transitive GTK stack are reported as warnings but don't fail
+        # the build (no upstream fix available to us; not used on Windows).
+        run: cargo audit
