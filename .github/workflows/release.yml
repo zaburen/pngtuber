@@ -37,7 +37,11 @@ jobs:
             libssl-dev \
             patchelf \
             build-essential \
-            file
+            file \
+            libudev-dev \
+            libx11-dev \
+            libxi-dev \
+            libxtst-dev
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
