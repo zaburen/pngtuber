@@ -14,16 +14,29 @@ export class Renderer {
   private lastBounce = 0;
   private scale = 1;
 
-  constructor(private container: HTMLElement) {
+  /**
+   * @param container element the layers are drawn into.
+   * @param viewport  when given (in-app preview), the composition is scaled
+   *   down to fit this element; omitted for the OBS overlay, which stays true-size.
+   */
+  constructor(
+    private container: HTMLElement,
+    private viewport: HTMLElement | null = null,
+  ) {
     container.classList.add('avatar');
+    if (viewport && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => this.fit()).observe(viewport);
+    }
   }
 
   render(s: RenderState) {
     this.scale = s.scale;
     this.container.classList.toggle('pixelated', s.pixelated);
+    // Bounce amplitude (px) the keyframe reads via var(--bounce-amp).
+    this.container.style.setProperty('--bounce-amp', `${14 * (s.bounceScale ?? 1)}px`);
 
     const want: RenderLayer[] = s.placeholder
-      ? [{ id: '__placeholder', url: placeholder(s.placeholderFrame), offsetX: 0, offsetY: 0, follow: true }]
+      ? [{ id: '__placeholder', url: placeholder(s.placeholderFrame), offsetX: 0, offsetY: 0, follow: true, scale: 1, main: true }]
       : s.layers;
 
     // Drop imgs for layers that no longer exist.
@@ -44,7 +57,7 @@ export class Renderer {
         img = document.createElement('img');
         img.alt = '';
         img.draggable = false;
-        img.onload = () => this.applyScale(img!);
+        img.onload = () => { this.applyScale(img!); this.fit(); };
         this.imgs.set(l.id, img);
       }
       // Re-append in order: cheap way to keep DOM order = stack order even
@@ -58,6 +71,8 @@ export class Renderer {
       img.classList.toggle('active', !!url);
       img.dataset.ox = String(l.offsetX);
       img.dataset.oy = String(l.offsetY);
+      img.dataset.ls = String(l.scale);
+      img.dataset.main = l.main ? '1' : '';
       this.applyScale(img);
       // Bounce only the layers that follow the character (main + following props).
       if (bounced && l.follow) {
@@ -66,14 +81,45 @@ export class Renderer {
         img.classList.add('bounce');
       }
     }
+    this.fit();
   }
 
   private applyScale(img: HTMLImageElement) {
-    if (img.naturalWidth) img.style.width = img.naturalWidth * this.scale + 'px';
+    const ls = Number(img.dataset.ls ?? 1);
+    if (img.naturalWidth) img.style.width = img.naturalWidth * this.scale * ls + 'px';
     const ox = Number(img.dataset.ox ?? 0) * this.scale;
     const oy = Number(img.dataset.oy ?? 0) * this.scale;
     // `translate` centers + nudges; `transform` is left free for the bounce keyframes.
     img.style.translate = `calc(-50% + ${ox}px) calc(-50% + ${oy}px)`;
+  }
+
+  /**
+   * Preview only: shrink the whole composition so it fits `viewport`, never
+   * enlarging past true size. Centered on the same origin the layers use.
+   */
+  private fit() {
+    if (!this.viewport) return;
+    const active = [...this.imgs.values()].filter(
+      (i) => i.classList.contains('active') && i.naturalWidth,
+    );
+    // Anchor the zoom to the character so resizing a background doesn't move it.
+    const anchor = active.filter((i) => i.dataset.main === '1');
+    const use = anchor.length ? anchor : active;
+    let cw = 0;
+    let ch = 0;
+    for (const img of use) {
+      const ls = Number(img.dataset.ls ?? 1);
+      const w = img.naturalWidth * this.scale * ls;
+      const h = img.naturalHeight * this.scale * ls;
+      const ox = Math.abs(Number(img.dataset.ox ?? 0) * this.scale);
+      const oy = Math.abs(Number(img.dataset.oy ?? 0) * this.scale);
+      cw = Math.max(cw, w + 2 * ox);
+      ch = Math.max(ch, h + 2 * oy);
+    }
+    const availW = this.viewport.clientWidth - 24;
+    const availH = this.viewport.clientHeight - 24;
+    const f = cw > 0 && ch > 0 ? Math.min(1, availW / cw, availH / ch) : 1;
+    this.container.style.transform = f < 1 ? `scale(${f})` : 'none';
   }
 }
 
@@ -103,5 +149,5 @@ export const RENDERER_CSS = `
 .avatar.pixelated img { image-rendering: pixelated; }
 .avatar img.active { display: block; }
 .avatar img.bounce { animation: avatar-bounce 0.22s ease-out; }
-@keyframes avatar-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(-14px); } 100% { transform: translateY(0); } }
+@keyframes avatar-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(calc(var(--bounce-amp, 14px) * -1)); } 100% { transform: translateY(0); } }
 `;

@@ -9,8 +9,10 @@
 import type { LayerOverride } from './bindings';
 import { Mic } from './mic';
 import {
+  DEFAULT_MIC,
   frameStorageKey,
   type FrameKey,
+  type MicSettings,
   type Profile,
   type RenderLayer,
   type RenderState,
@@ -19,6 +21,8 @@ import {
 export class Avatar {
   readonly mic = new Mic();
   profile: Profile;
+  /** Mic tuning (global, shared across sets). Set by the control panel. */
+  micSettings: MicSettings = { ...DEFAULT_MIC };
   /** frameStorageKey(layerId, frame) → image URL, for frames that exist. */
   frames: Record<string, string> = {};
   /** Runtime overrides from input bindings; call emit() after replacing. */
@@ -85,6 +89,8 @@ export class Avatar {
         offsetY: l.offset?.y ?? 0,
         // The voice-reactive main layer always bounces; props bounce only if they follow.
         follow: l.reactsToVoice || (l.followBounce ?? true),
+        scale: l.scale ?? 1,
+        main: l.reactsToVoice,
       };
     });
     return {
@@ -94,6 +100,7 @@ export class Avatar {
       scale: this.profile.look.scale,
       pixelated: this.profile.look.pixelated,
       bounceSeq: this.bounceSeq,
+      bounceScale: this.profile.look.bounceScale ?? 1,
     };
   }
 
@@ -113,7 +120,7 @@ export class Avatar {
   }
 
   private updateTalking(now: number) {
-    const { threshold, gain, hold } = this.profile.mic;
+    const { threshold, gain, hold } = this.micSettings;
     if (this.mic.running) {
       const rms = this.mic.rms() * gain;
       this.level = Math.max(rms, this.level * 0.85); // fast attack, smooth release

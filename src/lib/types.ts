@@ -27,6 +27,8 @@ export interface Layer {
   followBounce?: boolean;
   /** Non-voice prop layers: pixel nudge from center so an accessory lines up. */
   offset?: { x: number; y: number };
+  /** Per-layer size multiplier of the global scale (1 = same size as the character grid). */
+  scale?: number;
 }
 
 export interface Variant {
@@ -61,20 +63,41 @@ export function newBindingId(): string {
 /** Id of the variant every layer starts with. */
 export const DEFAULT_VARIANT_ID = 'default';
 
+/** Mic tuning — shared across all sets (it's about your hardware, not the avatar). */
+export interface MicSettings {
+  deviceId: string;
+  enabled: boolean;
+  threshold: number;
+  gain: number;
+  /** ms to keep "talking" after the level drops below threshold */
+  hold: number;
+}
+
+/** Settings shared across every set, stored in global.json. */
+export interface GlobalSettings {
+  mic: MicSettings;
+}
+
+/** One avatar set in the registry (a self-contained avatar). */
+export interface SetEntry {
+  id: string;
+  name: string;
+}
+
+/** The set registry from the backend. */
+export interface SetsIndex {
+  active: string;
+  sets: SetEntry[];
+}
+
 export interface Profile {
   version: 1;
-  mic: {
-    deviceId: string;
-    enabled: boolean;
-    threshold: number;
-    gain: number;
-    /** ms to keep "talking" after the level drops below threshold */
-    hold: number;
-  };
   look: {
     scale: number;
     pixelated: boolean;
     bounce: boolean;
+    /** Bounce height multiplier when `bounce` is on (1 = default). */
+    bounceScale: number;
     /** Play the periodic "timed" frame variant (blink/twitch/sway). */
     timed: boolean;
     /** Average seconds between timed frames (actual interval jitters around this). */
@@ -83,6 +106,8 @@ export interface Profile {
   /** The avatar stack. Always at least one layer. */
   layers: Layer[];
   bindings: Binding[];
+  /** Frame storage key -> original file path, so a frame can be re-imported. */
+  frameSources: Record<string, string>;
 }
 
 /** Id of the layer old (pre-layer) profiles and fresh installs start with. */
@@ -96,10 +121,19 @@ function defaultVariants(): Variant[] {
   return [{ id: DEFAULT_VARIANT_ID, name: 'default' }];
 }
 
+export const DEFAULT_MIC: MicSettings = {
+  deviceId: '',
+  enabled: true,
+  threshold: 0.12,
+  gain: 2.0,
+  hold: 180,
+};
+
+export const DEFAULT_GLOBAL: GlobalSettings = { mic: { ...DEFAULT_MIC } };
+
 export const DEFAULT_PROFILE: Profile = {
   version: 1,
-  mic: { deviceId: '', enabled: true, threshold: 0.12, gain: 2.0, hold: 180 },
-  look: { scale: 4, pixelated: true, bounce: true, timed: true, timedEvery: 4.5 },
+  look: { scale: 4, pixelated: true, bounce: true, bounceScale: 1, timed: true, timedEvery: 4.5 },
   layers: [
     {
       id: BASE_LAYER_ID,
@@ -111,6 +145,7 @@ export const DEFAULT_PROFILE: Profile = {
     },
   ],
   bindings: [],
+  frameSources: {},
 };
 
 /** One resolved layer for drawing: which image (if any) it shows right now. */
@@ -122,6 +157,10 @@ export interface RenderLayer {
   offsetY: number;
   /** Bounce with the character on talk (the main layer and following props). */
   follow: boolean;
+  /** Per-layer size multiplier of the global scale (1 = same). */
+  scale: number;
+  /** True for the voice-reactive character layer; the preview fit-to-view anchor. */
+  main: boolean;
 }
 
 /** Everything an overlay needs to draw one frame. Sent over the WebSocket. */
@@ -138,6 +177,8 @@ export interface RenderState {
   pixelated: boolean;
   /** Increments every time a bounce should play. */
   bounceSeq: number;
+  /** Bounce height multiplier (1 = default). */
+  bounceScale: number;
 }
 
 /** Merge a stored profile over the defaults so fields added later get values. */
@@ -159,6 +200,7 @@ export function mergeProfile(stored: unknown): Profile {
               : variants[0].id,
             followBounce: l.followBounce ?? true,
             offset: { x: l.offset?.x ?? 0, y: l.offset?.y ?? 0 },
+            scale: l.scale ?? 1,
           };
         })
       : // pre-layer profiles (M1) had a single implicit avatar
@@ -176,10 +218,23 @@ export function mergeProfile(stored: unknown): Profile {
     }));
   return {
     version: 1,
-    mic: { ...DEFAULT_PROFILE.mic, ...(s.mic ?? {}) },
     look: { ...DEFAULT_PROFILE.look, ...(s.look ?? {}) },
     layers,
     bindings,
+    frameSources:
+      s.frameSources && typeof s.frameSources === 'object' ? { ...s.frameSources } : {},
+  };
+}
+
+/**
+ * Merge stored global settings over defaults. `legacyMic` seeds the mic from an
+ * old profile that still carried a `mic` block, a one-time migration to global.
+ */
+export function mergeGlobal(stored: unknown, legacyMic?: unknown): GlobalSettings {
+  const s = (stored ?? {}) as Partial<GlobalSettings>;
+  const legacy = (legacyMic ?? {}) as Partial<MicSettings>;
+  return {
+    mic: { ...DEFAULT_MIC, ...legacy, ...(s.mic ?? {}) },
   };
 }
 

@@ -2,7 +2,15 @@
 // Copyright (c) 2026 zaburen
 
 import { describe, expect, it } from 'vitest';
-import { BASE_LAYER_ID, DEFAULT_PROFILE, DEFAULT_VARIANT_ID, frameStorageKey, mergeProfile } from './types';
+import {
+  BASE_LAYER_ID,
+  DEFAULT_MIC,
+  DEFAULT_PROFILE,
+  DEFAULT_VARIANT_ID,
+  frameStorageKey,
+  mergeGlobal,
+  mergeProfile,
+} from './types';
 
 describe('mergeProfile', () => {
   it('gives a fresh install one voice-reactive base layer', () => {
@@ -14,10 +22,15 @@ describe('mergeProfile', () => {
   });
 
   it('migrates an M1 profile (no layers field) onto the base layer', () => {
-    const p = mergeProfile({ version: 1, mic: { threshold: 0.3 } });
-    expect(p.mic.threshold).toBe(0.3);
-    expect(p.mic.gain).toBe(DEFAULT_PROFILE.mic.gain); // filled from defaults
+    const p = mergeProfile({ version: 1 });
     expect(p.layers[0].id).toBe(BASE_LAYER_ID);
+  });
+
+  it('defaults frameSources to an empty map', () => {
+    expect(mergeProfile(null).frameSources).toEqual({});
+    expect(mergeProfile({ frameSources: { 'main.default.idle': 'C:/a.png' } }).frameSources).toEqual({
+      'main.default.idle': 'C:/a.png',
+    });
   });
 
   it('does not share variant objects with DEFAULT_PROFILE', () => {
@@ -65,5 +78,22 @@ describe('mergeProfile', () => {
 describe('frameStorageKey', () => {
   it('joins layer, variant and frame with dots', () => {
     expect(frameStorageKey('main', 'default', 'idle-timed')).toBe('main.default.idle-timed');
+  });
+});
+
+describe('mergeGlobal', () => {
+  it('fills mic defaults on a fresh install', () => {
+    expect(mergeGlobal(null).mic.gain).toBe(DEFAULT_MIC.gain);
+  });
+
+  it('seeds mic from a legacy profile mic block (migration)', () => {
+    const g = mergeGlobal(null, { threshold: 0.3 });
+    expect(g.mic.threshold).toBe(0.3);
+    expect(g.mic.gain).toBe(DEFAULT_MIC.gain); // other fields still defaulted
+  });
+
+  it('prefers stored global mic over the legacy block', () => {
+    const g = mergeGlobal({ mic: { threshold: 0.5 } }, { threshold: 0.3 });
+    expect(g.mic.threshold).toBe(0.5);
   });
 });
