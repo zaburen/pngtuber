@@ -438,6 +438,7 @@
       Backgrounds and accessories that stack on the character — glasses, a hat, a background.
       Listed front-to-back: the top layer is drawn in front. ▲ moves a layer toward the front, ▼ toward the back.
     </p>
+    <button onclick={addLayer}>+ Add layer</button>
     {#each propLayersTopFirst as layer (layer.id)}
       {@const i = profile.layers.indexOf(layer)}
       <div class="card">
@@ -479,7 +480,6 @@
         {@render frameSlots(layer.id, DEFAULT_VARIANT_ID, false, false)}
       </div>
     {/each}
-    <button onclick={addLayer}>+ Add layer</button>
 
     <h2>Look</h2>
     <label>Overall size
