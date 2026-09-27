@@ -148,7 +148,11 @@ async fn frame(Path(name): Path<String>, State(shared): State<Shared>) -> Respon
         Ok(bytes) => (
             [
                 (header::CONTENT_TYPE, "image/png"),
-                (header::CACHE_CONTROL, "no-cache"),
+                // Frame URLs carry a `?v=` cache-buster that changes whenever the
+                // bytes change (and per app launch), so a given URL is immutable.
+                // Let the browser (preview + OBS) cache it and skip refetching on
+                // every frame swap / blink.
+                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
             ],
             bytes,
         )

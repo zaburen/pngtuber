@@ -39,7 +39,12 @@
   let applyDefaultName = $state('');
   let confirmingApply = $state(false);
   let present: string[] = $state([]);
-  let frameVersion = $state(0);
+  // Frame-URL cache-buster. Seeded per app launch (not 0) so that with the
+  // immutable Cache-Control on /frames, a long-lived OBS browser source can
+  // never serve a frame cached under the same ?v= from a previous session.
+  // Bumped on every frame change (import/clear/apply-default/set switch), so a
+  // URL's bytes never change without its ?v= changing.
+  let frameVersion = $state(Date.now());
   let mics: MediaDeviceInfo[] = $state([]);
   let micRunning = $state(false);
   let micStatus = $state({ text: '', error: false });
