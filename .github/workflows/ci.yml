@@ -20,7 +20,13 @@ permissions:
 jobs:
   frontend:
     name: Frontend (build, check, test, audit)
-    runs-on: ubuntu-latest
+    # Windows is the primary target; run the checks on both so a platform-specific
+    # bug can't pass locally (Windows) yet fail in CI (Linux), or vice versa.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,15 +39,22 @@ jobs:
       - run: npm run check
       - run: npm test
       # Fail only on moderate+ advisories; low dev-only noise stays a warning.
+      # Result is OS-independent (same lockfile), so run it once on Linux.
       - run: npm audit --audit-level=moderate
+        if: runner.os == 'Linux'
 
   rust:
     name: Rust (test, audit)
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      # Tauri v2 build/link prerequisites on Ubuntu.
+      # Tauri v2 build/link prerequisites on Ubuntu (Windows needs none of these).
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -73,11 +86,14 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test --locked
+      # Audit only on Linux: cargo-audit reads the same lockfile on either OS, and
+      # the only advisories in scope are Tauri's transitive GTK stack (Linux-only,
+      # no upstream fix). Building cargo-audit on Windows would add minutes for
+      # nothing. Fails the build on an actual vulnerability.
       - name: Install cargo-audit
+        if: runner.os == 'Linux'
         run: cargo install cargo-audit --locked
       - name: cargo audit
+        if: runner.os == 'Linux'
         working-directory: src-tauri
-        # Fails on actual vulnerabilities. Unmaintained/unsound advisories in
-        # Tauri's transitive GTK stack are reported as warnings but don't fail
-        # the build (no upstream fix available to us; not used on Windows).
         run: cargo audit
