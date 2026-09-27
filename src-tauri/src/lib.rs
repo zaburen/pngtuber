@@ -6,12 +6,10 @@ mod server;
 mod sets;
 
 use server::Shared;
-use sets::{SetEntry, SetsIndex};
+use sets::{SetEntry, SetsIndex, FRAMES_DIR, PROFILE_FILE};
 use std::path::{Path, PathBuf};
 use tauri::{Manager, State};
 
-const PROFILE_FILE: &str = "profile.json";
-const FRAMES_DIR: &str = "frames";
 /// Settings shared across all sets (mic tuning etc.), in `<appData>/global.json`.
 const GLOBAL_FILE: &str = "global.json";
 
@@ -33,6 +31,33 @@ fn profile_dir_sync(shared: &Shared) -> PathBuf {
 /// Point the frame server + frame commands at a different set's folder.
 fn set_active_dir(shared: &Shared, dir: PathBuf) {
     *shared.profile_dir.blocking_write() = dir;
+}
+
+/// Read an optional JSON file: `Ok(None)` if it doesn't exist, else the parsed value.
+fn read_json_opt(path: &Path) -> Result<Option<serde_json::Value>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map(Some).map_err(|e| format!("parse {}: {e}", path.display()))
+}
+
+/// Write `value` as pretty JSON to `dir/file`, creating `dir` if needed.
+fn write_json_pretty(dir: &Path, file: &str, value: &serde_json::Value) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("mkdir {}: {e}", dir.display()))?;
+    let path = dir.join(file);
+    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Make `dir` the active set's folder: ensure its frames dir exists, migrate any
+/// old-layout frame files, then point the server + frame commands at it.
+fn activate_set_dir(shared: &Shared, dir: PathBuf) -> Result<(), String> {
+    let frames = dir.join(FRAMES_DIR);
+    std::fs::create_dir_all(&frames).map_err(|e| e.to_string())?;
+    migrate_frame_files(&frames);
+    set_active_dir(shared, dir);
+    Ok(())
 }
 
 /// Frame keys are `<layerId>.<variantId>.<frameKey>` (dots separate the parts).
@@ -90,21 +115,12 @@ fn migrate_frame_files(frames_dir: &Path) {
 
 #[tauri::command]
 fn load_profile(state: State<AppState>) -> Result<Option<serde_json::Value>, String> {
-    let path = profile_dir_sync(&state.shared).join(PROFILE_FILE);
-    if !path.exists() {
-        return Ok(None);
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    serde_json::from_str(&text).map(Some).map_err(|e| format!("parse {}: {e}", path.display()))
+    read_json_opt(&profile_dir_sync(&state.shared).join(PROFILE_FILE))
 }
 
 #[tauri::command]
 fn save_profile(state: State<AppState>, profile: serde_json::Value) -> Result<(), String> {
-    let dir = profile_dir_sync(&state.shared);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {}: {e}", dir.display()))?;
-    let path = dir.join(PROFILE_FILE);
-    let text = serde_json::to_string_pretty(&profile).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))
+    write_json_pretty(&profile_dir_sync(&state.shared), PROFILE_FILE, &profile)
 }
 
 /// Copy an image from anywhere on disk into the profile's frames folder as
@@ -239,10 +255,7 @@ fn switch_set(state: State<AppState>, id: String) -> Result<(), String> {
     }
     idx.active = id.clone();
     sets::write_index(&state.profiles_root, &idx)?;
-    let dir = sets::set_dir(&state.profiles_root, &id);
-    std::fs::create_dir_all(dir.join(FRAMES_DIR)).map_err(|e| e.to_string())?;
-    migrate_frame_files(&dir.join(FRAMES_DIR));
-    set_active_dir(&state.shared, dir);
+    activate_set_dir(&state.shared, sets::set_dir(&state.profiles_root, &id))?;
     Ok(())
 }
 
@@ -273,10 +286,7 @@ fn delete_set(state: State<AppState>, id: String) -> Result<String, String> {
     sets::remove_set_dir(&state.profiles_root, &id)?;
     if idx.active == id {
         idx.active = idx.sets[0].id.clone();
-        let dir = sets::set_dir(&state.profiles_root, &idx.active);
-        std::fs::create_dir_all(dir.join(FRAMES_DIR)).map_err(|e| e.to_string())?;
-        migrate_frame_files(&dir.join(FRAMES_DIR));
-        set_active_dir(&state.shared, dir);
+        activate_set_dir(&state.shared, sets::set_dir(&state.profiles_root, &idx.active))?;
     }
     sets::write_index(&state.profiles_root, &idx)?;
     Ok(idx.active)
@@ -285,20 +295,12 @@ fn delete_set(state: State<AppState>, id: String) -> Result<String, String> {
 /// Settings shared across sets (mic tuning). Opaque JSON owned by the frontend.
 #[tauri::command]
 fn load_global(state: State<AppState>) -> Result<Option<serde_json::Value>, String> {
-    let path = state.data_dir.join(GLOBAL_FILE);
-    if !path.exists() {
-        return Ok(None);
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    serde_json::from_str(&text).map(Some).map_err(|e| format!("parse {}: {e}", path.display()))
+    read_json_opt(&state.data_dir.join(GLOBAL_FILE))
 }
 
 #[tauri::command]
 fn save_global(state: State<AppState>, value: serde_json::Value) -> Result<(), String> {
-    std::fs::create_dir_all(&state.data_dir).map_err(|e| e.to_string())?;
-    let path = state.data_dir.join(GLOBAL_FILE);
-    let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| format!("write {}: {e}", path.display()))
+    write_json_pretty(&state.data_dir, GLOBAL_FILE, &value)
 }
 
 /// Ensure `sets.json` exists and return the active set's directory. Migrates an

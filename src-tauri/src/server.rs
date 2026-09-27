@@ -143,7 +143,7 @@ async fn frame(Path(name): Path<String>, State(shared): State<Shared>) -> Respon
     if !frame_name_ok(&name) {
         return StatusCode::BAD_REQUEST.into_response();
     }
-    let path = shared.profile_dir.read().await.join("frames").join(&name);
+    let path = shared.profile_dir.read().await.join(crate::sets::FRAMES_DIR).join(&name);
     match tokio::fs::read(&path).await {
         Ok(bytes) => (
             [

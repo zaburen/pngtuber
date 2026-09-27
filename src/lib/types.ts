@@ -131,7 +131,7 @@ export function mainLayer(profile: Profile): Layer {
   return profile.layers.find((l) => l.id === BASE_LAYER_ID) ?? profile.layers[0];
 }
 
-function defaultVariants(): Variant[] {
+export function defaultVariants(): Variant[] {
   return [{ id: DEFAULT_VARIANT_ID, name: 'default' }];
 }
 

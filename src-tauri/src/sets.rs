@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 struct BundledAvatars;
 
 const SETS_FILE: &str = "sets.json";
-const FRAMES_DIR: &str = "frames";
-const PROFILE_FILE: &str = "profile.json";
+pub const FRAMES_DIR: &str = "frames";
+pub const PROFILE_FILE: &str = "profile.json";
 /// Frame files created when seeding a set from a bundled avatar.
 const FRAME_KEYS: [&str; 4] = ["idle", "talking", "idle-timed", "talking-timed"];
 
