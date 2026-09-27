@@ -14,7 +14,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path, State,
     },
-    http::{header, Request, StatusCode},
+    http::{header, HeaderMap, Request, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::get,
     Router,
@@ -22,7 +22,6 @@ use axum::{
 use rust_embed::RustEmbed;
 use std::{path::PathBuf, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
-use tower_http::cors::CorsLayer;
 
 /// Overlay server port. Must match `OVERLAY_PORT` in src/lib/types.ts.
 pub const DEFAULT_PORT: u16 = 8737;
@@ -71,7 +70,6 @@ pub async fn run(shared: Shared, port: u16) {
         .route("/ws", get(ws_handler))
         .route("/frames/{name}", get(frame))
         .fallback(static_file)
-        .layer(CorsLayer::permissive())
         .with_state(shared);
 
     let addr = format!("127.0.0.1:{port}");
@@ -93,7 +91,27 @@ pub async fn run(shared: Shared, port: u16) {
     }
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(shared): State<Shared>) -> Response {
+/// Allow a WS handshake only from our own origin (the overlay page in OBS or a
+/// browser) or a non-browser client that sends no Origin (curl, native tools,
+/// tests). Browsers always send an Origin on a WS handshake, so this stops a
+/// random web page the user visits from opening `/ws` and reading the live
+/// render-state stream — the one thing permissive CORS used to leave open.
+fn ws_origin_ok(origin: Option<&str>) -> bool {
+    match origin {
+        None => true,
+        Some(o) => {
+            o == format!("http://127.0.0.1:{DEFAULT_PORT}")
+                || o == format!("http://localhost:{DEFAULT_PORT}")
+        }
+    }
+}
+
+async fn ws_handler(ws: WebSocketUpgrade, headers: HeaderMap, State(shared): State<Shared>) -> Response {
+    let origin = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok());
+    if !ws_origin_ok(origin) {
+        log::warn!("rejected cross-origin ws handshake from origin {origin:?}");
+        return StatusCode::FORBIDDEN.into_response();
+    }
     ws.on_upgrade(move |socket| ws_session(socket, shared))
 }
 
@@ -176,7 +194,21 @@ async fn static_file(req: Request<Body>) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::frame_name_ok;
+    use super::{frame_name_ok, ws_origin_ok};
+
+    #[test]
+    fn ws_origin_allows_same_origin_and_non_browser() {
+        assert!(ws_origin_ok(None)); // curl / native / tests send no Origin
+        assert!(ws_origin_ok(Some("http://127.0.0.1:8737")));
+        assert!(ws_origin_ok(Some("http://localhost:8737")));
+    }
+
+    #[test]
+    fn ws_origin_rejects_foreign_pages() {
+        assert!(!ws_origin_ok(Some("https://evil.example")));
+        assert!(!ws_origin_ok(Some("http://127.0.0.1:9999")));
+        assert!(!ws_origin_ok(Some("null")));
+    }
 
     #[test]
     fn accepts_plain_png_names() {
