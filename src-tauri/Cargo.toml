@@ -1,5 +1,8 @@
 [package]
 name = "pngtuber"
+# App/release version is the single source of truth in ../package.json
+# (tauri.conf.json reads it via "version": "../package.json"). This is only
+# the internal Rust crate version and does not need to track the app version.
 version = "0.1.0"
 description = "Lightweight PNGTuber app: mic-driven avatar with hotkey/controller poses"
 authors = ["zaburen"]
