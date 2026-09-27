@@ -9,13 +9,13 @@
   import { Mic } from '$lib/mic';
   import { Renderer, RENDERER_CSS, placeholder } from '$lib/renderer';
   import * as backend from '$lib/backend';
-  import { mainLayer } from '$lib/poses';
   import { addProp, moveProp, removeProp, setPropBehind } from '$lib/props';
   import {
     DEFAULT_VARIANT_ID,
     FRAME_KEYS,
     OVERLAY_ORIGIN,
     frameStorageKey,
+    mainLayer,
     mergeGlobal,
     mergeProfile,
     type FrameKey,

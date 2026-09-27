@@ -2,8 +2,8 @@
 // Copyright (c) 2026 zaburen
 
 import { describe, expect, it } from 'vitest';
-import { addPose, listPoses, mainLayer, removePose, renamePose, setPoseTrigger } from './poses';
-import { DEFAULT_VARIANT_ID, mergeProfile } from './types';
+import { addPose, listPoses, removePose, renamePose, setPoseTrigger } from './poses';
+import { DEFAULT_VARIANT_ID, mainLayer, mergeProfile } from './types';
 
 const fresh = () => mergeProfile(null);
 

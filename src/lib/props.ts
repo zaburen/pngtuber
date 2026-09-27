@@ -11,8 +11,7 @@
  * Under the hood a layer is a non-voice layer (`reactsToVoice: false`) with one
  * image. This module is the single tested translation the UI and tests share.
  */
-import { mainLayer } from './poses';
-import { DEFAULT_VARIANT_ID, newLayerId, type Layer, type Profile } from './types';
+import { DEFAULT_VARIANT_ID, mainLayer, newLayerId, type Layer, type Profile } from './types';
 
 export interface Prop {
   /** The layer id backing this prop. */

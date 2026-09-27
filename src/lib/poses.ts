@@ -12,12 +12,11 @@
  * layer/variant/binding mutations, so the UI and the tests share one path.
  */
 import {
-  BASE_LAYER_ID,
   DEFAULT_VARIANT_ID,
+  mainLayer,
   newBindingId,
   newVariantId,
   type Binding,
-  type Layer,
   type Profile,
 } from './types';
 
@@ -29,11 +28,6 @@ export interface Pose {
   trigger: string;
   /** The binding id driving this pose, if one exists. */
   bindingId: string | null;
-}
-
-/** The layer poses live on: the main voice-reactive avatar layer. */
-export function mainLayer(profile: Profile): Layer {
-  return profile.layers.find((l) => l.id === BASE_LAYER_ID) ?? profile.layers[0];
 }
 
 function poseBinding(profile: Profile, variantId: string): Binding | undefined {

@@ -117,6 +117,15 @@ export function newLayerId(): string {
   return 'l' + Math.random().toString(36).slice(2, 8);
 }
 
+/**
+ * The character layer: the main voice-reactive avatar layer that the Character
+ * UI, props, and (2.0) poses hang off. Falls back to the first layer if no
+ * layer carries the canonical id.
+ */
+export function mainLayer(profile: Profile): Layer {
+  return profile.layers.find((l) => l.id === BASE_LAYER_ID) ?? profile.layers[0];
+}
+
 function defaultVariants(): Variant[] {
   return [{ id: DEFAULT_VARIANT_ID, name: 'default' }];
 }

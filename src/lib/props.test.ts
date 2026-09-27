@@ -2,9 +2,8 @@
 // Copyright (c) 2026 zaburen
 
 import { describe, expect, it } from 'vitest';
-import { mainLayer } from './poses';
 import { addProp, listProps, moveProp, removeProp, renameProp, setPropBehind } from './props';
-import { mergeProfile } from './types';
+import { mainLayer, mergeProfile } from './types';
 
 const fresh = () => mergeProfile(null);
 
