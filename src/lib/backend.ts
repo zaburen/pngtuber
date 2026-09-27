@@ -23,13 +23,15 @@ export const deleteSet = (id: string) => invoke<string>('delete_set', { id });
 // --- Global settings (mic; shared across sets) ---
 export const loadGlobal = () => invoke<unknown>('load_global');
 export const saveGlobal = (value: GlobalSettings) => invoke<void>('save_global', { value });
-/** `key` is a frame storage key: `<layerId>.<frameKey>`. Returns all present keys. */
+/** `key` is a frame storage key: `<layerId>.<variantId>.<frameKey>`. Returns all present keys. */
 export const importFrame = (key: string, src: string) => invoke<string[]>('import_frame', { key, src });
 export const clearFrame = (key: string) => invoke<string[]>('clear_frame', { key });
 export const listFrames = () => invoke<string[]>('list_frames');
 export const publishState = (json: string) => invoke<void>('publish_state', { json });
 export const overlayUrl = () => invoke<string>('overlay_url');
 export const profilePath = () => invoke<string>('profile_path');
+// Global-input IPC — shelved for v1 (no input hook is spawned; see lib.rs setup).
+// Kept wired for 2.0 hotkey/gamepad layer triggers.
 /** Register which triggers the global input hook may forward (all else is dropped). */
 export const setBoundTriggers = (triggers: string[]) => invoke<void>('set_bound_triggers', { triggers });
 /** Binding editor: forward the next key/button press once as `input-capture`. */

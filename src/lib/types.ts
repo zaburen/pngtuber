@@ -4,6 +4,11 @@
 export const FRAME_KEYS = ['idle', 'talking', 'idle-timed', 'talking-timed'] as const;
 export type FrameKey = (typeof FRAME_KEYS)[number];
 
+/**
+ * Overlay server port. Must match `DEFAULT_PORT` in src-tauri/src/server.rs
+ * (two sources of truth for a fixed port). If the port ever becomes dynamic,
+ * the frontend must read it from Rust (backend.overlayUrl) instead of these.
+ */
 export const OVERLAY_PORT = 8737;
 export const OVERLAY_ORIGIN = `http://127.0.0.1:${OVERLAY_PORT}`;
 

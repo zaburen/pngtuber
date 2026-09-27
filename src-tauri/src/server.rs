@@ -24,6 +24,7 @@ use std::{path::PathBuf, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use tower_http::cors::CorsLayer;
 
+/// Overlay server port. Must match `OVERLAY_PORT` in src/lib/types.ts.
 pub const DEFAULT_PORT: u16 = 8737;
 
 /// Built frontend (SvelteKit static output). Read from disk in debug builds,
