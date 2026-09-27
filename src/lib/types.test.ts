@@ -7,6 +7,7 @@ import {
   DEFAULT_MIC,
   DEFAULT_PROFILE,
   DEFAULT_VARIANT_ID,
+  FRAME_KEYS,
   frameStorageKey,
   mergeGlobal,
   mergeProfile,
@@ -78,6 +79,23 @@ describe('mergeProfile', () => {
 describe('frameStorageKey', () => {
   it('joins layer, variant and frame with dots', () => {
     expect(frameStorageKey('main', 'default', 'idle-timed')).toBe('main.default.idle-timed');
+  });
+});
+
+// The Rust host (src-tauri/src/sets.rs) seeds bundled character art on disk as
+// `main.default.<frameKey>.png`, hardcoded. The frontend resolves those frames
+// via frameStorageKey(mainLayer.id, DEFAULT_VARIANT_ID, fk). They only agree
+// while the constants below hold; sets.rs has the mirror test (seeded_frame_name).
+describe('frame storage key contract (shared with Rust seeding)', () => {
+  it('keys character frames as main.default.<frameKey>', () => {
+    for (const fk of FRAME_KEYS) {
+      expect(frameStorageKey(BASE_LAYER_ID, DEFAULT_VARIANT_ID, fk)).toBe(`main.default.${fk}`);
+    }
+  });
+
+  it('BASE_LAYER_ID and DEFAULT_VARIANT_ID are the canonical values', () => {
+    expect(BASE_LAYER_ID).toBe('main');
+    expect(DEFAULT_VARIANT_ID).toBe('default');
   });
 });
 

@@ -113,6 +113,14 @@ pub fn create_set_files(root: &Path, id: &str, from: &str) -> Result<(), String>
     Ok(())
 }
 
+/// On-disk filename for a seeded character frame. Must stay in lock-step with the
+/// frontend's `frameStorageKey(BASE_LAYER_ID, DEFAULT_VARIANT_ID, fk) + ".png"`
+/// (`main.default.<key>.png`) — a mismatch silently orphans bundled art. The
+/// frontend side is pinned by src/lib/types.test.ts; this side by the test below.
+fn seeded_frame_name(fk: &str) -> String {
+    format!("main.default.{fk}.png")
+}
+
 /// Write a bundled avatar's four frames into `frames` as `main.default.<key>.png`
 /// (matching the frontend's BASE_LAYER_ID / DEFAULT_VARIANT_ID). Overwrites any
 /// existing character frames; other frames (accessory layers) are left alone.
@@ -121,7 +129,7 @@ pub fn seed_from_bundled(frames: &Path, name: &str) -> Result<(), String> {
     for fk in FRAME_KEYS {
         let asset = format!("{name}/{fk}.png");
         if let Some(file) = BundledAvatars::get(&asset) {
-            let dest = frames.join(format!("main.default.{fk}.png"));
+            let dest = frames.join(seeded_frame_name(fk));
             std::fs::write(&dest, file.data.into_owned())
                 .map_err(|e| format!("write {}: {e}", dest.display()))?;
             wrote += 1;
@@ -161,4 +169,33 @@ pub fn remove_set_dir(root: &Path, id: &str) -> Result<(), String> {
         std::fs::remove_dir_all(&dir).map_err(|e| format!("remove {}: {e}", dir.display()))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{id_ok, seeded_frame_name, FRAME_KEYS};
+
+    #[test]
+    fn seeded_frame_name_matches_frontend_contract() {
+        // Mirror of src/lib/types.test.ts: frameStorageKey(main, default, fk) + ".png".
+        assert_eq!(seeded_frame_name("idle"), "main.default.idle.png");
+        assert_eq!(seeded_frame_name("talking-timed"), "main.default.talking-timed.png");
+    }
+
+    #[test]
+    fn frame_keys_are_the_four_documented() {
+        assert_eq!(FRAME_KEYS, ["idle", "talking", "idle-timed", "talking-timed"]);
+    }
+
+    #[test]
+    fn id_ok_rejects_traversal_and_separators() {
+        assert!(id_ok("cat"));
+        assert!(id_ok("set_01-abc"));
+        assert!(!id_ok(""));
+        assert!(!id_ok(".."));
+        assert!(!id_ok("a/b"));
+        assert!(!id_ok("a\\b"));
+        assert!(!id_ok("C:x"));
+        assert!(!id_ok(&"x".repeat(65)));
+    }
 }
