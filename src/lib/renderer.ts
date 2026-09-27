@@ -13,6 +13,9 @@ export class Renderer {
   private imgs = new Map<string, HTMLImageElement>();
   private lastBounce = 0;
   private scale = 1;
+  private frame: RenderState['frame'] = { enabled: false, w: 0, h: 0 };
+  /** Preview-only crop guide (border + dimmed bleed); null when off / on overlay. */
+  private guide: HTMLDivElement | null = null;
 
   /**
    * @param container element the layers are drawn into.
@@ -31,6 +34,7 @@ export class Renderer {
 
   render(s: RenderState) {
     this.scale = s.scale;
+    this.frame = s.frame;
     this.container.classList.toggle('pixelated', s.pixelated);
     // Bounce amplitude (px) the keyframe reads via var(--bounce-amp).
     this.container.style.setProperty('--bounce-amp', `${14 * s.bounceScale}px`);
@@ -90,7 +94,38 @@ export class Renderer {
         img.classList.remove('bounce');
       }
     }
+    this.applyFrame();
     this.fit();
+  }
+
+  /**
+   * Apply the output crop. The overlay hard-crops: sizing the origin box to
+   * w×h with `overflow:hidden` clips everything outside it (layers are centered
+   * on that box's center). The preview never clips — it draws a guide rectangle
+   * that outlines the frame and dims whatever bleeds past it.
+   */
+  private applyFrame() {
+    const { enabled, w, h } = this.frame;
+    if (!this.viewport) {
+      // Overlay: crop by constraining the origin box.
+      this.container.style.width = enabled ? `${w}px` : '';
+      this.container.style.height = enabled ? `${h}px` : '';
+      this.container.style.overflow = enabled ? 'hidden' : '';
+      return;
+    }
+    // Preview: show everything; the guide marks the crop.
+    if (!enabled) {
+      this.guide?.remove();
+      this.guide = null;
+      return;
+    }
+    if (!this.guide) {
+      this.guide = document.createElement('div');
+      this.guide.className = 'frame-guide';
+    }
+    this.guide.style.width = `${w}px`;
+    this.guide.style.height = `${h}px`;
+    this.container.appendChild(this.guide); // re-append last so it sits above the layers
   }
 
   private applyScale(img: HTMLImageElement) {
@@ -108,22 +143,29 @@ export class Renderer {
    */
   private fit() {
     if (!this.viewport) return;
-    const active = [...this.imgs.values()].filter(
-      (i) => i.classList.contains('active') && i.naturalWidth,
-    );
-    // Anchor the zoom to the character so resizing a background doesn't move it.
-    const anchor = active.filter((i) => i.dataset.main === '1');
-    const use = anchor.length ? anchor : active;
     let cw = 0;
     let ch = 0;
-    for (const img of use) {
-      const ls = Number(img.dataset.ls ?? 1);
-      const w = img.naturalWidth * this.scale * ls;
-      const h = img.naturalHeight * this.scale * ls;
-      const ox = Math.abs(Number(img.dataset.ox ?? 0) * this.scale);
-      const oy = Math.abs(Number(img.dataset.oy ?? 0) * this.scale);
-      cw = Math.max(cw, w + 2 * ox);
-      ch = Math.max(ch, h + 2 * oy);
+    if (this.frame.enabled) {
+      // Frame on: fit the crop rectangle to the viewport so the whole frame (and
+      // the dimmed bleed around it) is always in view.
+      cw = this.frame.w;
+      ch = this.frame.h;
+    } else {
+      const active = [...this.imgs.values()].filter(
+        (i) => i.classList.contains('active') && i.naturalWidth,
+      );
+      // Anchor the zoom to the character so resizing a background doesn't move it.
+      const anchor = active.filter((i) => i.dataset.main === '1');
+      const use = anchor.length ? anchor : active;
+      for (const img of use) {
+        const ls = Number(img.dataset.ls ?? 1);
+        const w = img.naturalWidth * this.scale * ls;
+        const h = img.naturalHeight * this.scale * ls;
+        const ox = Math.abs(Number(img.dataset.ox ?? 0) * this.scale);
+        const oy = Math.abs(Number(img.dataset.oy ?? 0) * this.scale);
+        cw = Math.max(cw, w + 2 * ox);
+        ch = Math.max(ch, h + 2 * oy);
+      }
     }
     const availW = this.viewport.clientWidth - 24;
     const availH = this.viewport.clientHeight - 24;
@@ -159,4 +201,7 @@ export const RENDERER_CSS = `
 .avatar img.active { display: block; }
 .avatar img.bounce { animation: avatar-bounce 0.22s ease-out; }
 @keyframes avatar-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(calc(var(--bounce-amp, 14px) * -1)); } 100% { transform: translateY(0); } }
+/* Preview crop guide: a border marks the exported region; the outward shadow
+   dims everything that bleeds past it. Preview only — the overlay never makes it. */
+.avatar .frame-guide { position: absolute; left: 50%; top: 50%; translate: -50% -50%; box-sizing: border-box; pointer-events: none; border: 1px solid #6ea8fe; box-shadow: 0 0 0 9999px rgba(16, 18, 23, 0.6); }
 `;

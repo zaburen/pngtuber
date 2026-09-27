@@ -104,6 +104,7 @@ export class Avatar {
       pixelated: this.profile.look.pixelated,
       bounceSeq: this.bounceSeq,
       bounceScale: this.profile.look.bounceScale,
+      frame: this.profile.look.frame,
     };
   }
 
