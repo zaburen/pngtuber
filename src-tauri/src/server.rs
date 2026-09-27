@@ -40,6 +40,10 @@ pub struct Shared {
     /// Latest render-state JSON, replayed to newly connected overlays.
     pub last_state: Arc<RwLock<Option<String>>>,
     pub tx: broadcast::Sender<String>,
+    /// A message if the server failed to bind (e.g. port in use). The panel
+    /// polls this so the failure isn't silent — the preview loads frames over
+    /// this same port, so a collision breaks the whole app, not just OBS.
+    pub bind_error: Arc<RwLock<Option<String>>>,
 }
 
 impl Shared {
@@ -49,6 +53,7 @@ impl Shared {
             profile_dir: Arc::new(RwLock::new(profile_dir)),
             last_state: Arc::new(RwLock::new(None)),
             tx,
+            bind_error: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -60,6 +65,7 @@ impl Shared {
 }
 
 pub async fn run(shared: Shared, port: u16) {
+    let bind_error = shared.bind_error.clone();
     let app = Router::new()
         .route("/", get(|| async { Redirect::temporary("/overlay") }))
         .route("/ws", get(ws_handler))
@@ -76,7 +82,14 @@ pub async fn run(shared: Shared, port: u16) {
                 log::error!("overlay server stopped: {e}");
             }
         }
-        Err(e) => log::error!("cannot bind overlay server on {addr}: {e}"),
+        Err(e) => {
+            log::error!("cannot bind overlay server on {addr}: {e}");
+            *bind_error.write().await = Some(format!(
+                "Port {port} is already in use, so the avatar can't display (this powers both \
+                 the OBS overlay and the in-app preview). Close whatever is using it — often \
+                 another copy of pngtuber — then restart."
+            ));
+        }
     }
 }
 

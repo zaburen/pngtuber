@@ -166,6 +166,13 @@ fn overlay_url() -> String {
     format!("http://127.0.0.1:{}/", server::DEFAULT_PORT)
 }
 
+/// A message if the overlay server failed to start (e.g. port in use), else null.
+/// The panel polls this so the failure surfaces instead of a silently blank avatar.
+#[tauri::command]
+fn server_status(state: State<AppState>) -> Option<String> {
+    state.shared.bind_error.blocking_read().clone()
+}
+
 /// Frontend registers which triggers are bound; the input listeners drop
 /// everything else (see input.rs privacy design).
 #[tauri::command]
@@ -359,6 +366,7 @@ pub fn run() {
             list_frames,
             publish_state,
             overlay_url,
+            server_status,
             profile_path,
             set_bound_triggers,
             set_trigger_capture,

@@ -43,6 +43,8 @@
   let mics: MediaDeviceInfo[] = $state([]);
   let micRunning = $state(false);
   let micStatus = $state({ text: '', error: false });
+  /** Set if the overlay/preview server couldn't bind its port (see server_status). */
+  let serverError = $state('');
   let dragOver: string | null = $state(null);
   let profileDir = $state('');
   let copied = $state(false);
@@ -90,6 +92,10 @@
       avatar.micSettings = global.mic;
       avatar.start();
       ready = true;
+
+      // Surface a failed overlay-server bind (port in use) — it also breaks the
+      // in-app preview, so a silent failure would look like a broken app.
+      serverError = (await backend.serverStatus()) ?? '';
 
       mics = await Mic.list();
       if (global.mic.enabled) startMic();
@@ -362,6 +368,9 @@
 
   <aside class="panel">
     <h1>pngtuber</h1>
+    {#if serverError}
+      <div class="banner" role="alert">{serverError}</div>
+    {/if}
 
     <h2>Avatar set</h2>
     <p class="hint">Each set is a whole avatar (its art + layers + look). Switch between them here.</p>
@@ -579,6 +588,10 @@
   .val { min-width: 38px; text-align: right; color: #9aa0ad; font-variant-numeric: tabular-nums; }
   .status { font-size: 11px; color: #7fe0a8; margin-top: 4px; min-height: 14px; word-break: break-word; }
   .status.error { color: #e08a8a; }
+  .banner {
+    background: #4a1f1f; color: #f3c9c9; border: 1px solid #7a3535; border-radius: 5px;
+    padding: 8px 10px; margin: 8px 0; font-size: 12px; line-height: 1.4;
+  }
   .meter { width: 100%; height: 18px; border-radius: 4px; margin-top: 6px; }
   .card { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
   .pose-head { display: flex; gap: 4px; align-items: center; }

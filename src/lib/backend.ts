@@ -29,6 +29,8 @@ export const clearFrame = (key: string) => invoke<string[]>('clear_frame', { key
 export const listFrames = () => invoke<string[]>('list_frames');
 export const publishState = (json: string) => invoke<void>('publish_state', { json });
 export const overlayUrl = () => invoke<string>('overlay_url');
+/** A message if the overlay server failed to start (port in use), else null. */
+export const serverStatus = () => invoke<string | null>('server_status');
 export const profilePath = () => invoke<string>('profile_path');
 // Global-input IPC — shelved for v1 (no input hook is spawned; see lib.rs setup).
 // Kept wired for 2.0 hotkey/gamepad layer triggers.
