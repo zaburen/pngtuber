@@ -109,10 +109,24 @@ async fn ws_session(mut socket: WebSocket, shared: Shared) {
     log::debug!("overlay disconnected");
 }
 
+/// A safe frame filename: a single plain path segment ending in `.png`.
+///
+/// Rejects separators and `..`, but also — unlike a bare slash check — Windows
+/// drive-relative names like `C:foo.png`, which `Path::join` resolves against
+/// C:'s current directory (escaping the frames dir), and absolute paths.
+fn frame_name_ok(name: &str) -> bool {
+    if !name.ends_with(".png") {
+        return false;
+    }
+    let mut comps = std::path::Path::new(name).components();
+    matches!(
+        (comps.next(), comps.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    )
+}
+
 async fn frame(Path(name): Path<String>, State(shared): State<Shared>) -> Response {
-    // `name` is a single path segment, so `..` traversal is not possible,
-    // but reject anything that isn't a plain png filename anyway.
-    if !name.ends_with(".png") || name.contains(['/', '\\']) {
+    if !frame_name_ok(&name) {
         return StatusCode::BAD_REQUEST.into_response();
     }
     let path = shared.profile_dir.read().await.join("frames").join(&name);
@@ -140,4 +154,34 @@ async fn static_file(req: Request<Body>) -> Response {
         }
     }
     StatusCode::NOT_FOUND.into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::frame_name_ok;
+
+    #[test]
+    fn accepts_plain_png_names() {
+        assert!(frame_name_ok("main.default.idle.png"));
+        assert!(frame_name_ok("l7k2x9.default.talking-timed.png"));
+    }
+
+    #[test]
+    fn rejects_non_png_and_separators_and_traversal() {
+        assert!(!frame_name_ok("main.default.idle")); // no .png
+        assert!(!frame_name_ok("evil.txt"));
+        assert!(!frame_name_ok("a/b.png"));
+        assert!(!frame_name_ok("a\\b.png"));
+        assert!(!frame_name_ok("../secret.png"));
+        assert!(!frame_name_ok(".."));
+        assert!(!frame_name_ok("/etc/passwd.png")); // absolute
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn rejects_windows_drive_relative() {
+        // `<frames>.join("C:foo.png")` resolves against C:'s cwd, escaping frames.
+        assert!(!frame_name_ok("C:foo.png"));
+        assert!(!frame_name_ok("C:\\foo.png"));
+    }
 }
