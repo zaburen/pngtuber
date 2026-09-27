@@ -126,6 +126,28 @@
     }, 300);
   });
 
+  /** Drop a pending debounced save. Its snapshot belongs to the current set, so
+   *  it must not survive into a different active set (it would write the wrong
+   *  data into the new set's dir). */
+  function cancelProfileSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+  }
+
+  /** Persist any pending edit to disk NOW, before an op that changes the active
+   *  set (switch / duplicate). Without this the 300ms debounce can fire after
+   *  Rust has flipped the active dir — clobbering the new set with old data
+   *  (or a duplicate copying a stale on-disk profile.json). */
+  async function flushProfileSave() {
+    if (!saveTimer) return;
+    cancelProfileSave();
+    await backend
+      .saveProfile(JSON.parse(JSON.stringify(profile)))
+      .catch((e) => console.error('save failed', e));
+  }
+
   // Global settings (mic) persist separately from the per-set profile.
   let globalSaveTimer: ReturnType<typeof setTimeout> | null = null;
   $effect(() => {
@@ -200,12 +222,14 @@
   }
   async function switchTo(id: string) {
     if (!id || id === sets.active) return;
+    await flushProfileSave(); // persist edits to the current set before leaving it
     await backend.switchSet(id);
     sets = { ...sets, active: id };
     await reloadActive();
   }
   async function createNewSet() {
     const name = newSetName.trim() || 'New set';
+    await flushProfileSave(); // so "duplicate current" copies the on-disk profile with latest edits
     const id = await backend.createSet(name, newSetFrom);
     sets = await backend.listSets();
     creating = false;
@@ -227,6 +251,7 @@
     renaming = false;
   }
   async function deleteActive() {
+    cancelProfileSave(); // don't let a pending save fire into the post-delete active set
     const newActive = await backend.deleteSet(sets.active);
     sets = await backend.listSets();
     sets = { ...sets, active: newActive };
