@@ -34,6 +34,8 @@ export class Avatar {
   private lastLoudAt = 0;
   private bounceSeq = 0;
   private timedTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Inner timer that clears a timed frame ~150ms after it shows. */
+  private timedResetTimer: ReturnType<typeof setTimeout> | null = null;
   private raf = 0;
   private lastSent = '';
 
@@ -57,6 +59,7 @@ export class Avatar {
   stop() {
     cancelAnimationFrame(this.raf);
     if (this.timedTimer) clearTimeout(this.timedTimer);
+    if (this.timedResetTimer) clearTimeout(this.timedResetTimer);
     this.mic.stop();
   }
 
@@ -147,7 +150,7 @@ export class Avatar {
       if (this.profile.look.timed) {
         this.timed = true;
         this.emit();
-        setTimeout(() => {
+        this.timedResetTimer = setTimeout(() => {
           this.timed = false;
           this.emit();
         }, 150);

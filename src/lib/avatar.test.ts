@@ -176,4 +176,25 @@ describe('Avatar timed (blink) scheduling', () => {
       vi.useRealTimers();
     }
   });
+
+  it('stop() cancels the pending timed-reset so no stray render fires afterward', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('cancelAnimationFrame', () => {}); // node env has no DOM raf
+    const rand = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      const { av, states } = makeTiming({}, { timed: true, timedEvery: 1 });
+      (av as unknown as { scheduleTimed(): void }).scheduleTimed();
+
+      vi.advanceTimersByTime(1000); // timed frame shown; the 150ms reset timer is now armed
+      const countAtStop = states.length;
+
+      av.stop(); // teardown (e.g. set switch) mid-timed-frame
+      vi.advanceTimersByTime(1000); // the reset (and any reschedule) must not fire
+      expect(states.length).toBe(countAtStop); // no emit after stop
+    } finally {
+      rand.mockRestore();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
 });
