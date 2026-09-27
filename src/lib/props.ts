@@ -11,14 +11,7 @@
  * Under the hood a layer is a non-voice layer (`reactsToVoice: false`) with one
  * image. This module is the single tested translation the UI and tests share.
  */
-import {
-  DEFAULT_VARIANT_ID,
-  defaultVariants,
-  mainLayer,
-  newLayerId,
-  type Layer,
-  type Profile,
-} from './types';
+import { mainLayer, newLayer, newLayerId, type Layer, type Profile } from './types';
 
 export interface Prop {
   /** The layer id backing this prop. */
@@ -46,16 +39,12 @@ function place(profile: Profile, layer: Layer, behind: boolean): void {
 }
 
 export function addProp(profile: Profile, behind = false): Prop {
-  const layer: Layer = {
+  const layer = newLayer({
     id: newLayerId(),
     name: behind ? 'background' : 'accessory',
     reactsToVoice: false,
-    visible: true,
-    variants: defaultVariants(),
-    activeVariant: DEFAULT_VARIANT_ID,
     followBounce: !behind, // accessories ride the face; backgrounds stay put
-    offset: { x: 0, y: 0 },
-  };
+  });
   place(profile, layer, behind);
   return { id: layer.id, name: layer.name, behind };
 }

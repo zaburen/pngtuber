@@ -33,7 +33,7 @@ export class Renderer {
     this.scale = s.scale;
     this.container.classList.toggle('pixelated', s.pixelated);
     // Bounce amplitude (px) the keyframe reads via var(--bounce-amp).
-    this.container.style.setProperty('--bounce-amp', `${14 * (s.bounceScale ?? 1)}px`);
+    this.container.style.setProperty('--bounce-amp', `${14 * s.bounceScale}px`);
 
     const want: RenderLayer[] = s.placeholder
       ? [{ id: '__placeholder', url: placeholder(s.placeholderFrame), offsetX: 0, offsetY: 0, follow: true, scale: 1, main: true }]

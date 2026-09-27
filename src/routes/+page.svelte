@@ -451,9 +451,9 @@
     {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true, true)}
     <label>Size
       <span class="row"><input type="range" min="0" max="1000" step="1"
-        value={scaleToPos(main.scale ?? 1)}
+        value={scaleToPos(main.scale)}
         oninput={(e) => (main.scale = posToScale(+e.currentTarget.value))}>
-      <span class="val">{(main.scale ?? 1) < 0.1 ? (main.scale ?? 1).toFixed(3) : (main.scale ?? 1).toFixed(2)}×</span></span></label>
+      <span class="val">{main.scale < 0.1 ? main.scale.toFixed(3) : main.scale.toFixed(2)}×</span></span></label>
     <p class="hint">Sizes just the character. Use <b>Look → Overall size</b> below to scale the whole scene.</p>
     {#if defaults.length}
       <div class="row" style="margin-top:6px">
@@ -505,17 +505,15 @@
         <label class="row"><input type="checkbox" bind:checked={layer.followBounce}> Move with the character (bounce)</label>
         <label>Size
           <span class="row"><input type="range" min="0" max="1000" step="1"
-            value={scaleToPos(layer.scale ?? 1)}
+            value={scaleToPos(layer.scale)}
             oninput={(e) => (layer.scale = posToScale(+e.currentTarget.value))}>
-          <span class="val">{(layer.scale ?? 1) < 0.1 ? (layer.scale ?? 1).toFixed(3) : (layer.scale ?? 1).toFixed(2)}×</span></span></label>
-        {#if layer.offset}
-          <label>Nudge
-            <span class="row">
-              x <input class="num" type="number" step="1" bind:value={layer.offset.x}>
-              y <input class="num" type="number" step="1" bind:value={layer.offset.y}>
-            </span>
-          </label>
-        {/if}
+          <span class="val">{layer.scale < 0.1 ? layer.scale.toFixed(3) : layer.scale.toFixed(2)}×</span></span></label>
+        <label>Nudge
+          <span class="row">
+            x <input class="num" type="number" step="1" bind:value={layer.offset.x}>
+            y <input class="num" type="number" step="1" bind:value={layer.offset.y}>
+          </span>
+        </label>
         {@render frameSlots(layer.id, DEFAULT_VARIANT_ID, false, false)}
       </div>
     {/each}

@@ -27,13 +27,15 @@ export interface Layer {
   variants: Variant[];
   /** id of the variant currently shown (and edited). */
   activeVariant: string;
-  /** Non-voice prop layers: bounce along with the character on talk (accessories
-   * that ride the face). Ignored for the voice-reactive main layer (always bounces). */
-  followBounce?: boolean;
-  /** Non-voice prop layers: pixel nudge from center so an accessory lines up. */
-  offset?: { x: number; y: number };
-  /** Per-layer size multiplier of the global scale (1 = same size as the character grid). */
-  scale?: number;
+  /** Bounce along with the character on talk (accessories that ride the face).
+   * Ignored for the voice-reactive main layer (which always bounces). Always
+   * populated after mergeProfile — see newLayer(). */
+  followBounce: boolean;
+  /** Pixel nudge from center so an accessory lines up. Always populated. */
+  offset: { x: number; y: number };
+  /** Per-layer size multiplier of the global scale (1 = same size as the
+   * character grid). Always populated. */
+  scale: number;
 }
 
 export interface Variant {
@@ -135,6 +137,31 @@ export function defaultVariants(): Variant[] {
   return [{ id: DEFAULT_VARIANT_ID, name: 'default' }];
 }
 
+/**
+ * Build a fully-populated layer from partial input — the single source of truth
+ * for layer defaults. Both creation (addProp) and migration (mergeProfile) go
+ * through here, so a default value lives in exactly one place. Because Layer's
+ * fields are required, the compiler forces a default here for every field
+ * (including any added later), and downstream code never re-defaults.
+ */
+export function newLayer(partial: Partial<Layer> & Pick<Layer, 'id'>): Layer {
+  const variants =
+    partial.variants && partial.variants.length > 0 ? partial.variants : defaultVariants();
+  return {
+    id: partial.id,
+    name: partial.name ?? 'layer',
+    reactsToVoice: partial.reactsToVoice ?? false,
+    visible: partial.visible ?? true,
+    variants,
+    activeVariant: variants.some((v) => v.id === partial.activeVariant)
+      ? partial.activeVariant!
+      : variants[0].id,
+    followBounce: partial.followBounce ?? true,
+    offset: { x: partial.offset?.x ?? 0, y: partial.offset?.y ?? 0 },
+    scale: partial.scale ?? 1,
+  };
+}
+
 export const DEFAULT_MIC: MicSettings = {
   deviceId: '',
   enabled: true,
@@ -148,16 +175,7 @@ export const DEFAULT_GLOBAL: GlobalSettings = { mic: { ...DEFAULT_MIC } };
 export const DEFAULT_PROFILE: Profile = {
   version: 1,
   look: { scale: 4, pixelated: true, bounce: true, bounceScale: 1, timed: true, timedEvery: 4.5 },
-  layers: [
-    {
-      id: BASE_LAYER_ID,
-      name: 'avatar',
-      reactsToVoice: true,
-      visible: true,
-      variants: defaultVariants(),
-      activeVariant: DEFAULT_VARIANT_ID,
-    },
-  ],
+  layers: [newLayer({ id: BASE_LAYER_ID, name: 'avatar', reactsToVoice: true })],
   bindings: [],
   frameSources: {},
 };
@@ -200,23 +218,8 @@ export function mergeProfile(stored: unknown): Profile {
   const s = (stored ?? {}) as Partial<Profile>;
   const layers: Layer[] =
     Array.isArray(s.layers) && s.layers.length > 0
-      ? s.layers.map((l, i) => {
-          const variants =
-            Array.isArray(l.variants) && l.variants.length > 0 ? l.variants : defaultVariants();
-          return {
-            id: l.id ?? newLayerId(),
-            name: l.name ?? `layer ${i + 1}`,
-            reactsToVoice: l.reactsToVoice ?? false,
-            visible: l.visible ?? true,
-            variants,
-            activeVariant: variants.some((v) => v.id === l.activeVariant)
-              ? l.activeVariant!
-              : variants[0].id,
-            followBounce: l.followBounce ?? true,
-            offset: { x: l.offset?.x ?? 0, y: l.offset?.y ?? 0 },
-            scale: l.scale ?? 1,
-          };
-        })
+      ? // newLayer() fills every default and validates activeVariant against the variants
+        s.layers.map((l, i) => newLayer({ ...l, id: l.id ?? newLayerId(), name: l.name ?? `layer ${i + 1}` }))
       : // pre-layer profiles (M1) had a single implicit avatar
         DEFAULT_PROFILE.layers.map((l) => ({ ...l, variants: l.variants.map((v) => ({ ...v })) }));
   const layerIds = new Set(layers.map((l) => l.id));

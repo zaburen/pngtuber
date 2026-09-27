@@ -11,7 +11,40 @@ import {
   frameStorageKey,
   mergeGlobal,
   mergeProfile,
+  newLayer,
 } from './types';
+
+describe('newLayer (single source of layer defaults)', () => {
+  it('fills every field with its default from a minimal input', () => {
+    const l = newLayer({ id: 'x' });
+    expect(l).toEqual({
+      id: 'x',
+      name: 'layer',
+      reactsToVoice: false,
+      visible: true,
+      variants: [{ id: DEFAULT_VARIANT_ID, name: 'default' }],
+      activeVariant: DEFAULT_VARIANT_ID,
+      followBounce: true,
+      offset: { x: 0, y: 0 },
+      scale: 1,
+    });
+  });
+
+  it('keeps provided values and validates activeVariant against the variants', () => {
+    const l = newLayer({
+      id: 'x',
+      scale: 2,
+      offset: { x: 5, y: -3 },
+      followBounce: false,
+      variants: [{ id: 'a', name: 'a' }],
+      activeVariant: 'gone', // not in variants -> falls back to first
+    });
+    expect(l.scale).toBe(2);
+    expect(l.offset).toEqual({ x: 5, y: -3 });
+    expect(l.followBounce).toBe(false);
+    expect(l.activeVariant).toBe('a');
+  });
+});
 
 describe('mergeProfile', () => {
   it('gives a fresh install one voice-reactive base layer', () => {

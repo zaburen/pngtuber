@@ -88,11 +88,11 @@ export class Avatar {
       return {
         id: l.id,
         url: visible ? this.resolve(l.id, variant, l.reactsToVoice ? want : 'idle') : null,
-        offsetX: l.offset?.x ?? 0,
-        offsetY: l.offset?.y ?? 0,
+        offsetX: l.offset.x,
+        offsetY: l.offset.y,
         // The voice-reactive main layer always bounces; props bounce only if they follow.
-        follow: l.reactsToVoice || (l.followBounce ?? true),
-        scale: l.scale ?? 1,
+        follow: l.reactsToVoice || l.followBounce,
+        scale: l.scale,
         main: l.reactsToVoice,
       };
     });
@@ -103,7 +103,7 @@ export class Avatar {
       scale: this.profile.look.scale,
       pixelated: this.profile.look.pixelated,
       bounceSeq: this.bounceSeq,
-      bounceScale: this.profile.look.bounceScale ?? 1,
+      bounceScale: this.profile.look.bounceScale,
     };
   }
 
