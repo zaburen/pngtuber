@@ -60,6 +60,8 @@
   const mainIndex = $derived(profile.layers.indexOf(main));
   // The prop layers (everything that isn't the voice-reactive character), as live objects.
   const propLayers = $derived(profile.layers.filter((l) => l.id !== main.id && !l.reactsToVoice));
+  // Shown front-to-back (top of the list = drawn in front), the intuitive stacking order.
+  const propLayersTopFirst = $derived([...propLayers].reverse());
   const activeSet = $derived(sets.sets.find((s) => s.id === sets.active));
 
   onMount(() => {
@@ -408,6 +410,12 @@
     <h2>Character</h2>
     <p class="hint">Your <b>idle</b> and <b>talking</b> frames. Click or drop a PNG on any slot to change it. Only idle is required — talking and the timed frames fall back to it.</p>
     {@render frameSlots(main.id, DEFAULT_VARIANT_ID, true, true)}
+    <label>Size
+      <span class="row"><input type="range" min="0" max="1000" step="1"
+        value={scaleToPos(main.scale ?? 1)}
+        oninput={(e) => (main.scale = posToScale(+e.currentTarget.value))}>
+      <span class="val">{(main.scale ?? 1) < 0.1 ? (main.scale ?? 1).toFixed(3) : (main.scale ?? 1).toFixed(2)}×</span></span></label>
+    <p class="hint">Sizes just the character. Use <b>Look → Overall size</b> below to scale the whole scene.</p>
     {#if defaults.length}
       <div class="row" style="margin-top:6px">
         <select bind:value={applyDefaultName}>
@@ -428,9 +436,9 @@
     <h2>Layers</h2>
     <p class="hint">
       Backgrounds and accessories that stack on the character — glasses, a hat, a background.
-      Toggle each on/off, order them, and choose whether they move with the character.
+      Listed front-to-back: the top layer is drawn in front. ▲ moves a layer toward the front, ▼ toward the back.
     </p>
-    {#each propLayers as layer (layer.id)}
+    {#each propLayersTopFirst as layer (layer.id)}
       {@const i = profile.layers.indexOf(layer)}
       <div class="card">
         <div class="pose-head">
@@ -474,9 +482,10 @@
     <button onclick={addLayer}>+ Add layer</button>
 
     <h2>Look</h2>
-    <label>Scale
+    <label>Overall size
       <span class="row"><input type="range" min="1" max="12" step="1" bind:value={profile.look.scale}>
       <span class="val">{profile.look.scale}x</span></span></label>
+    <p class="hint">Scales the whole scene (character + all layers) together.</p>
     <label class="row"><input type="checkbox" bind:checked={profile.look.pixelated}> Crisp pixels (nearest-neighbor)</label>
     <label class="row"><input type="checkbox" bind:checked={profile.look.bounce}> Bounce on talk start</label>
     {#if profile.look.bounce}
