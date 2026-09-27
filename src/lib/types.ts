@@ -109,6 +109,13 @@ export interface Profile {
     timed: boolean;
     /** Average seconds between timed frames (actual interval jitters around this). */
     timedEvery: number;
+    /**
+     * Optional output crop. When `enabled`, the OBS overlay renders ONLY what
+     * falls inside a `w`×`h` box centered on the avatar origin (hard crop), so
+     * the browser-source size is the frame size. The in-app preview always
+     * shows everything, drawing the frame as a guide. Off = uncropped (legacy).
+     */
+    frame: { enabled: boolean; w: number; h: number };
   };
   /** The avatar stack. Always at least one layer. */
   layers: Layer[];
@@ -174,7 +181,15 @@ export const DEFAULT_GLOBAL: GlobalSettings = { mic: { ...DEFAULT_MIC } };
 
 export const DEFAULT_PROFILE: Profile = {
   version: 1,
-  look: { scale: 4, pixelated: true, bounce: true, bounceScale: 1, timed: true, timedEvery: 4.5 },
+  look: {
+    scale: 4,
+    pixelated: true,
+    bounce: true,
+    bounceScale: 1,
+    timed: true,
+    timedEvery: 4.5,
+    frame: { enabled: false, w: 300, h: 400 },
+  },
   layers: [newLayer({ id: BASE_LAYER_ID, name: 'avatar', reactsToVoice: true })],
   bindings: [],
   frameSources: {},
@@ -211,6 +226,8 @@ export interface RenderState {
   bounceSeq: number;
   /** Bounce height multiplier (1 = default). */
   bounceScale: number;
+  /** Output crop. Overlay clips to `w`×`h` when enabled; preview draws a guide. */
+  frame: { enabled: boolean; w: number; h: number };
 }
 
 /** Merge a stored profile over the defaults so fields added later get values. */
@@ -235,7 +252,13 @@ export function mergeProfile(stored: unknown): Profile {
     }));
   return {
     version: 1,
-    look: { ...DEFAULT_PROFILE.look, ...(s.look ?? {}) },
+    // `frame` is nested, so deep-merge it: a profile saved before frame-export
+    // has no look.frame, and one saved mid-migration could carry a partial one.
+    look: {
+      ...DEFAULT_PROFILE.look,
+      ...(s.look ?? {}),
+      frame: { ...DEFAULT_PROFILE.look.frame, ...(s.look?.frame ?? {}) },
+    },
     layers,
     bindings,
     frameSources:

@@ -109,6 +109,28 @@ describe('mergeProfile', () => {
   });
 });
 
+describe('look.frame (output crop) migration', () => {
+  it('defaults to a disabled 300x400 frame on a fresh install', () => {
+    expect(mergeProfile(null).look.frame).toEqual({ enabled: false, w: 300, h: 400 });
+  });
+
+  it('adds the default frame to a profile saved before frame-export existed', () => {
+    const p = mergeProfile({ look: { scale: 6, pixelated: false } });
+    expect(p.look.scale).toBe(6); // other look fields kept
+    expect(p.look.frame).toEqual({ enabled: false, w: 300, h: 400 });
+  });
+
+  it('deep-merges a partial stored frame over the defaults', () => {
+    const p = mergeProfile({ look: { frame: { enabled: true } } });
+    expect(p.look.frame).toEqual({ enabled: true, w: 300, h: 400 });
+  });
+
+  it('keeps a fully stored frame', () => {
+    const p = mergeProfile({ look: { frame: { enabled: true, w: 512, h: 512 } } });
+    expect(p.look.frame).toEqual({ enabled: true, w: 512, h: 512 });
+  });
+});
+
 describe('frameStorageKey', () => {
   it('joins layer, variant and frame with dots', () => {
     expect(frameStorageKey('main', 'default', 'idle-timed')).toBe('main.default.idle-timed');

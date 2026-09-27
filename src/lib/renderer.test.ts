@@ -31,6 +31,7 @@ function state(
     pixelated: false,
     bounceSeq,
     bounceScale: 1,
+    frame: { enabled: false, w: 300, h: 400 },
     ...extra,
   };
 }
@@ -183,5 +184,75 @@ describe('Renderer DOM composition', () => {
     const img = container.querySelector('img')!;
     // offset (source px) is multiplied by the global scale, added to the centering.
     expect(img.style.translate).toBe('calc(-50% + 20px) calc(-50% + -10px)');
+  });
+});
+
+// The overlay (no viewport) hard-crops by sizing the origin box; the preview
+// (with a viewport) never clips and instead draws a .frame-guide rectangle.
+describe('Renderer output frame (crop)', () => {
+  const withFrame = (w: number, h: number, enabled = true) =>
+    state([layer({ id: 'a' })], 0, { frame: { enabled, w, h } });
+
+  describe('overlay (no viewport): clips to the frame', () => {
+    let container: HTMLDivElement;
+    let r: Renderer;
+    beforeEach(() => {
+      container = document.createElement('div');
+      document.body.appendChild(container);
+      r = new Renderer(container);
+    });
+
+    it('sizes the origin box to w×h and hides overflow when enabled', () => {
+      r.render(withFrame(300, 400));
+      expect(container.style.width).toBe('300px');
+      expect(container.style.height).toBe('400px');
+      expect(container.style.overflow).toBe('hidden');
+    });
+
+    it('clears the crop when the frame is turned off', () => {
+      r.render(withFrame(300, 400));
+      r.render(withFrame(300, 400, false));
+      expect(container.style.width).toBe('');
+      expect(container.style.height).toBe('');
+      expect(container.style.overflow).toBe('');
+    });
+
+    it('never draws the preview guide element', () => {
+      r.render(withFrame(300, 400));
+      expect(container.querySelector('.frame-guide')).toBeNull();
+    });
+  });
+
+  describe('preview (with viewport): guide only, no clip', () => {
+    let container: HTMLDivElement;
+    let viewport: HTMLDivElement;
+    let r: Renderer;
+    beforeEach(() => {
+      viewport = document.createElement('div');
+      container = document.createElement('div');
+      viewport.appendChild(container);
+      document.body.appendChild(viewport);
+      r = new Renderer(container, viewport);
+    });
+
+    it('adds a guide sized to the frame and does not clip the origin box', () => {
+      r.render(withFrame(300, 400));
+      const guide = container.querySelector<HTMLElement>('.frame-guide')!;
+      expect(guide).not.toBeNull();
+      expect(guide.style.width).toBe('300px');
+      expect(guide.style.height).toBe('400px');
+      expect(container.style.overflow).toBe(''); // preview shows the bleed
+    });
+
+    it('keeps the guide above the layers (appended last)', () => {
+      r.render(withFrame(300, 400));
+      expect(container.lastElementChild?.classList.contains('frame-guide')).toBe(true);
+    });
+
+    it('removes the guide when the frame is turned off', () => {
+      r.render(withFrame(300, 400));
+      r.render(withFrame(300, 400, false));
+      expect(container.querySelector('.frame-guide')).toBeNull();
+    });
   });
 });
