@@ -21,7 +21,15 @@
     const connect = () => {
       ws = new WebSocket(`ws://127.0.0.1:${OVERLAY_PORT}/ws`);
       ws.onopen = () => { connected = true; console.log('overlay: connected'); };
-      ws.onmessage = (e) => renderer.render(JSON.parse(e.data) as RenderState);
+      ws.onmessage = (e) => {
+        // A single unparseable frame must not kill the handler (which would
+        // silently freeze the overlay with no reconnect).
+        try {
+          renderer.render(JSON.parse(e.data) as RenderState);
+        } catch (err) {
+          console.error('overlay: ignoring unparseable render state', err);
+        }
+      };
       ws.onclose = () => {
         connected = false;
         if (!closed) retry = setTimeout(connect, 1000); // app not running yet / restarted
