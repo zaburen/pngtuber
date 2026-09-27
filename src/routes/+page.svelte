@@ -424,6 +424,19 @@
       </div>
     {/if}
 
+    <h2>Output frame</h2>
+    <p class="hint">Crop the overlay output to a fixed size. Off: the whole scene shows. On: only this
+      region is exported (the preview dims the rest). Set it now or leave it until your art's done —
+      either works.</p>
+    <label class="row"><input type="checkbox" bind:checked={profile.look.frame.enabled}> Crop to output frame</label>
+    {#if profile.look.frame.enabled}
+      <div class="row">
+        w <input class="num" type="number" min="1" step="1" bind:value={profile.look.frame.w}>
+        h <input class="num" type="number" min="1" step="1" bind:value={profile.look.frame.h}>
+      </div>
+      <p class="hint">Exporting the {profile.look.frame.w}×{profile.look.frame.h} region — set your browser source to match.</p>
+    {/if}
+
     <h2>Microphone</h2>
     <select bind:value={global.mic.deviceId} onchange={onMicChange}>
       <option value="">Default microphone</option>
