@@ -150,6 +150,13 @@ fn frame_name_ok(name: &str) -> bool {
     if !name.ends_with(".png") {
         return false;
     }
+    // Reject both separators explicitly so the guard is identical on every OS.
+    // `Path::components` only treats `\` as a separator on Windows, so on Linux
+    // (where CI runs) a name like `a\b.png` would otherwise slip through as a
+    // single component. A frame name is always a bare `<key>.png`, never a path.
+    if name.contains('/') || name.contains('\\') {
+        return false;
+    }
     let mut comps = std::path::Path::new(name).components();
     matches!(
         (comps.next(), comps.next()),
