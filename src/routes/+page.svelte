@@ -69,6 +69,10 @@
   const propLayers = $derived(profile.layers.filter((l) => l.id !== main.id && !l.reactsToVoice));
   // Shown front-to-back (top of the list = drawn in front), the intuitive stacking order.
   const propLayersTopFirst = $derived([...propLayers].reverse());
+  // Split into the two stacking sides of the character (front = drawn over it,
+  // behind = under it). Each keeps the front-to-back order within its group.
+  const frontPropsTopFirst = $derived(propLayersTopFirst.filter((l) => profile.layers.indexOf(l) > mainIndex));
+  const backPropsTopFirst = $derived(propLayersTopFirst.filter((l) => profile.layers.indexOf(l) < mainIndex));
   const activeSet = $derived(sets.sets.find((s) => s.id === sets.active));
 
   onMount(() => {
@@ -270,8 +274,8 @@
     await reloadActive();
   }
 
-  function addLayer() {
-    addProp(profile);
+  function addLayer(behind = false) {
+    addProp(profile, behind);
   }
 
   async function deleteLayer(layer: Layer) {
@@ -363,6 +367,45 @@
         {/if}
       </div>
     {/each}
+  </div>
+{/snippet}
+
+{#snippet layerCard(layer: Layer)}
+  {@const i = profile.layers.indexOf(layer)}
+  {@const behind = i < mainIndex}
+  <div class="card">
+    <div class="pose-head">
+      <input class="layer-name" bind:value={layer.name} title="Layer name">
+      <button class="icon" title="Move toward front" disabled={i + 1 >= profile.layers.length || profile.layers[i + 1].id === main.id}
+              onclick={() => moveProp(profile, layer.id, 1)}>▲</button>
+      <button class="icon" title="Move toward back" disabled={i - 1 < 0 || profile.layers[i - 1].id === main.id}
+              onclick={() => moveProp(profile, layer.id, -1)}>▼</button>
+      <button class="icon" title="Delete layer and its image" onclick={() => (confirmingDelete = layer.id)}>×</button>
+    </div>
+    {#if confirmingDelete === layer.id}
+      <div class="confirm">
+        Delete “{layer.name}” and its image?
+        <button class="small danger" onclick={() => deleteLayer(layer)}>Delete</button>
+        <button class="small" onclick={() => (confirmingDelete = null)}>Cancel</button>
+      </div>
+    {/if}
+    <label class="row"><input type="checkbox" bind:checked={layer.visible}> Show this layer</label>
+    <button class="small cross" onclick={() => setPropBehind(profile, layer.id, !behind)}>
+      {behind ? '↑ Bring in front of character' : '↓ Send behind character'}
+    </button>
+    <label class="row"><input type="checkbox" bind:checked={layer.followBounce}> Move with the character (bounce)</label>
+    <label>Size
+      <span class="row"><input type="range" min="0" max="1000" step="1"
+        value={scaleToPos(layer.scale)}
+        oninput={(e) => (layer.scale = posToScale(+e.currentTarget.value))}>
+      <span class="val">{layer.scale < 0.1 ? layer.scale.toFixed(3) : layer.scale.toFixed(2)}×</span></span></label>
+    <label>Nudge
+      <span class="row">
+        x <input class="num" type="number" step="1" bind:value={layer.offset.x}>
+        y <input class="num" type="number" step="1" bind:value={layer.offset.y}>
+      </span>
+    </label>
+    {@render frameSlots(layer.id, DEFAULT_VARIANT_ID, false, false)}
   </div>
 {/snippet}
 
@@ -487,49 +530,26 @@
 
     <h2>Layers</h2>
     <p class="hint">
-      Backgrounds and accessories that stack on the character — glasses, a hat, a background.
-      Listed front-to-back: the top layer is drawn in front. ▲ moves a layer toward the front, ▼ toward the back.
+      Backgrounds and accessories that stack on the character. Layers <b>in front</b> draw over the
+      character; layers <b>behind</b> sit under it. ▲/▼ reorder within a group; a layer only moves
+      between groups when you send it across the character.
     </p>
-    <button onclick={addLayer}>+ Add layer</button>
-    {#each propLayersTopFirst as layer (layer.id)}
-      {@const i = profile.layers.indexOf(layer)}
-      <div class="card">
-        <div class="pose-head">
-          <input class="layer-name" bind:value={layer.name} title="Layer name">
-          <button class="icon" title="Move up" disabled={i + 1 >= profile.layers.length || profile.layers[i + 1].id === main.id}
-                  onclick={() => moveProp(profile, layer.id, 1)}>▲</button>
-          <button class="icon" title="Move down" disabled={i - 1 < 0 || profile.layers[i - 1].id === main.id}
-                  onclick={() => moveProp(profile, layer.id, -1)}>▼</button>
-          <button class="icon" title="Delete layer and its image" onclick={() => (confirmingDelete = layer.id)}>×</button>
-        </div>
-        {#if confirmingDelete === layer.id}
-          <div class="confirm">
-            Delete “{layer.name}” and its image?
-            <button class="small danger" onclick={() => deleteLayer(layer)}>Delete</button>
-            <button class="small" onclick={() => (confirmingDelete = null)}>Cancel</button>
-          </div>
-        {/if}
-        <label class="row"><input type="checkbox" bind:checked={layer.visible}> Show this layer</label>
-        <label class="row">
-          <input type="checkbox" checked={i < mainIndex}
-                 onchange={(e) => setPropBehind(profile, layer.id, e.currentTarget.checked)}>
-          Behind the character (background)
-        </label>
-        <label class="row"><input type="checkbox" bind:checked={layer.followBounce}> Move with the character (bounce)</label>
-        <label>Size
-          <span class="row"><input type="range" min="0" max="1000" step="1"
-            value={scaleToPos(layer.scale)}
-            oninput={(e) => (layer.scale = posToScale(+e.currentTarget.value))}>
-          <span class="val">{layer.scale < 0.1 ? layer.scale.toFixed(3) : layer.scale.toFixed(2)}×</span></span></label>
-        <label>Nudge
-          <span class="row">
-            x <input class="num" type="number" step="1" bind:value={layer.offset.x}>
-            y <input class="num" type="number" step="1" bind:value={layer.offset.y}>
-          </span>
-        </label>
-        {@render frameSlots(layer.id, DEFAULT_VARIANT_ID, false, false)}
-      </div>
+
+    <div class="group-head"><span>In front of character</span>
+      <button class="small" onclick={() => addLayer(false)}>+ add</button></div>
+    {#each frontPropsTopFirst as layer (layer.id)}
+      {@render layerCard(layer)}
     {/each}
+    {#if frontPropsTopFirst.length === 0}<p class="hint empty">No front layers yet.</p>{/if}
+
+    <div class="character-divider">character</div>
+
+    <div class="group-head"><span>Behind character</span>
+      <button class="small" onclick={() => addLayer(true)}>+ add</button></div>
+    {#each backPropsTopFirst as layer (layer.id)}
+      {@render layerCard(layer)}
+    {/each}
+    {#if backPropsTopFirst.length === 0}<p class="hint empty">No background layers yet.</p>{/if}
 
     <h2>Look</h2>
     <label>Overall size
@@ -610,6 +630,15 @@
   }
   .meter { width: 100%; height: 18px; border-radius: 4px; margin-top: 6px; }
   .card { border: 1px solid #333; border-radius: 6px; padding: 8px; margin-top: 8px; }
+  .group-head { display: flex; align-items: center; justify-content: space-between;
+    margin: 12px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #8a8f9c; }
+  .character-divider { display: flex; align-items: center; text-align: center; margin: 12px 0 4px;
+    color: #6ea8fe; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .character-divider::before, .character-divider::after { content: ''; flex: 1; height: 1px; background: #3a3f4a; }
+  .character-divider::before { margin-right: 8px; }
+  .character-divider::after { margin-left: 8px; }
+  .hint.empty { font-style: italic; margin: 2px 0 4px; }
+  button.small.cross { width: 100%; margin-top: 4px; }
   .pose-head { display: flex; gap: 4px; align-items: center; }
   .layer-name { flex: 1; min-width: 0; padding: 3px 6px; background: #12141a; color: #d8dae0;
     border: 1px solid #333; border-radius: 4px; }
