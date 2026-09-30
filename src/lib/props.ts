@@ -31,10 +31,18 @@ export function listProps(profile: Profile): Prop[] {
     .map(({ l, i }) => ({ id: l.id, name: l.name, behind: i < mainIndex }));
 }
 
-/** Place `layer` behind the character (before main) or in front (top of stack). */
-function place(profile: Profile, layer: Layer, behind: boolean): void {
+/**
+ * Place `layer` on one side of the character. Behind always sits just before the
+ * character (so backgrounds group there). In front: a brand-new layer goes on
+ * top (frontmost), but when `frontAdjacent` is set — a layer *crossing* from
+ * behind to front — it lands right in front of the character instead of leaping
+ * over every existing front layer to the top.
+ */
+function place(profile: Profile, layer: Layer, behind: boolean, frontAdjacent = false): void {
   profile.layers = profile.layers.filter((l) => l.id !== layer.id);
-  if (behind) profile.layers.splice(profile.layers.indexOf(mainLayer(profile)), 0, layer);
+  const mainIndex = profile.layers.indexOf(mainLayer(profile));
+  if (behind) profile.layers.splice(mainIndex, 0, layer);
+  else if (frontAdjacent) profile.layers.splice(mainIndex + 1, 0, layer);
   else profile.layers.push(layer);
 }
 
@@ -61,7 +69,7 @@ export function renameProp(profile: Profile, layerId: string, name: string): voi
 
 export function setPropBehind(profile: Profile, layerId: string, behind: boolean): void {
   const layer = profile.layers.find((l) => l.id === layerId);
-  if (layer) place(profile, layer, behind);
+  if (layer) place(profile, layer, behind, true); // crossing to front -> land next to the character, not on top
 }
 
 /**

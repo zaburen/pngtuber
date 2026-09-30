@@ -41,6 +41,29 @@ describe('props / layers', () => {
     expect(listProps(p)[0].behind).toBe(false);
   });
 
+  it('crossing behind->front lands next to the character, not on top of existing front layers', () => {
+    // Repro of the jumpy-reorder bug: [background, main, accessory]. Sending the
+    // background to the front must drop it just in front of the character
+    // (between main and the accessory), NOT leap above the accessory.
+    const p = fresh();
+    const accessory = addProp(p); // front, on top
+    const background = addProp(p, true); // behind
+    expect(p.layers.map((l) => l.id)).toEqual([background.id, mainLayer(p).id, accessory.id]);
+
+    setPropBehind(p, background.id, false); // bring to front
+    // background sits directly in front of the character; accessory stays frontmost.
+    expect(p.layers.map((l) => l.id)).toEqual([mainLayer(p).id, background.id, accessory.id]);
+  });
+
+  it('crossing front->behind lands just behind the character', () => {
+    const p = fresh();
+    const bg = addProp(p, true); // behind
+    const acc = addProp(p); // front
+    setPropBehind(p, acc.id, true); // send accessory behind
+    // acc lands just behind the character; the older background stays furthest back.
+    expect(p.layers.map((l) => l.id)).toEqual([bg.id, acc.id, mainLayer(p).id]);
+  });
+
   it('moveProp reorders same-side layers but never crosses the character', () => {
     const p = fresh();
     const a = addProp(p); // front
