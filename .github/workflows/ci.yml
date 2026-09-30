@@ -34,6 +34,24 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # `tauri build` refuses a major/minor mismatch between the Rust `tauri`
+      # crate and @tauri-apps/api, but CI never runs `tauri build`. Check it
+      # cheaply here so a lockfile drift (e.g. a cargo bump moving the crate)
+      # can't slip through green CI and only surface at release time.
+      - name: Tauri crate/npm version consistency
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          node -e '
+            const fs=require("fs");
+            const lock=fs.readFileSync("src-tauri/Cargo.lock","utf8");
+            const m=lock.match(/name = "tauri"\nversion = "([^"]+)"/);
+            const api=require("./node_modules/@tauri-apps/api/package.json").version;
+            const mm=v=>v.split(".").slice(0,2).join(".");
+            if(!m){console.error("::error::could not find the tauri crate in Cargo.lock");process.exit(1);}
+            console.log("rust tauri="+m[1]+"  npm @tauri-apps/api="+api);
+            if(mm(m[1])!==mm(api)){console.error("::error::tauri crate "+m[1]+" and @tauri-apps/api "+api+" differ on major.minor - tauri build will refuse. Align them.");process.exit(1);}
+          '
       # rust-embed needs build/ to exist; also validates the Svelte build.
       - run: npm run build
       - run: npm run check
