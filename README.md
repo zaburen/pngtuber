@@ -7,14 +7,9 @@ Lightweight PNGTuber for streamers. Drop in your PNGs, talk into your mic, add o
 ## How it works
 
 - Your mic volume switches between **idle** and **talking** frames; the avatar blinks on its own.
-- The avatar is a stack of **layers** (body, hat, held controller…), each with swappable **variants**.
-- **Bindings** map a keyboard key or gamepad button to a layer — show a variant, or show/hide the layer, while held or as a toggle. They work globally, so they fire while you're in your game.
+- The avatar is a stack of **layers** (body, hat, held controller…), each with swappable **variants** you pick in the panel.
 - The app serves a transparent overlay page at `http://127.0.0.1:8737/`. Add it in OBS as a **Browser** source — real transparency, no chroma key.
 - Keep the app running while you stream (it's what listens to the mic).
-
-### Input privacy
-
-Bindings use a global input hook (that's what makes them work while a game has focus), so here is exactly what it does: every key/button event is compared against the list of triggers you bound and **dropped unless it matches**. Unbound keystrokes are never stored, logged, or transmitted — there is no buffer to leak. The one exception is the moment you click a binding's trigger button: the very next key you press is forwarded once so the app can learn it. The code is short and auditable: [`src-tauri/src/input.rs`](src-tauri/src/input.rs).
 
 ## Setup
 
@@ -43,7 +38,7 @@ Tauri app: a Rust binary hosts the OS's built-in webview (WebView2 / WebKit), wh
 |---|---|---|
 | UI | Svelte 5 + TypeScript (SvelteKit, static adapter) | Control panel + overlay page |
 | Core logic | Plain TS (`src/lib/`) | Mic analysis, avatar state machine, renderer — framework-free, shared by panel and overlay |
-| Backend | Rust (`src-tauri/`) | File storage, localhost server, global input hooks (rdev + gilrs) |
+| Backend | Rust (`src-tauri/`) | File storage, localhost server |
 | Bridge | Tauri `invoke()` | UI calls Rust commands, gets Promises back |
 
 ### Data flow
@@ -68,6 +63,8 @@ src/lib/            types.ts (Profile schema) · mic.ts · avatar.ts · bindings
 src/routes/         +page.svelte (control panel) · overlay/+page.svelte (OBS page)
 src-tauri/src/      lib.rs (Tauri commands) · server.rs (axum: /overlay, /frames/*, /ws) · input.rs (global input)
 ```
+
+`bindings.ts` and `input.rs` are present but dormant — global-hotkey support is reserved for a future release and isn't wired into the shipped app.
 
 User data (never in the repo): `<app-data>/com.zcdor.pngtuber/profiles/default/` — `profile.json` + `frames/*.png`. The profile JSON is opaque to Rust; the frontend owns the schema and migrates old files via `mergeProfile()`.
 
