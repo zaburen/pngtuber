@@ -71,6 +71,11 @@ src-tauri/src/      lib.rs (Tauri commands) · server.rs (axum: /overlay, /frame
 
 User data (never in the repo): `<app-data>/com.zcdor.pngtuber/profiles/default/` — `profile.json` + `frames/*.png`. The profile JSON is opaque to Rust; the frontend owns the schema and migrates old files via `mergeProfile()`.
 
+## Contributing
+
+Bug reports and pull requests welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). In short: open an issue
+first for bugs and features, branch off `main`, and link the issue from your PR.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE). Use the code freely — but any distributed product built on it must be open source under the same license.
