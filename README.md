@@ -2,7 +2,7 @@
 
 Lightweight PNGTuber for streamers. Drop in your PNGs, talk into your mic, add one Browser source in OBS. Windows / macOS / Linux.
 
-**Status: early development.** Motion and multiple profiles are on the roadmap.
+**Status: early development.** Swap between multiple avatars (**sets**) today; richer motion is on the roadmap.
 
 ## How it works
 
