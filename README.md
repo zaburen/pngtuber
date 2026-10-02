@@ -20,6 +20,15 @@ Lightweight PNGTuber for streamers. Drop in your PNGs, talk into your mic, add o
 
 Your frames and settings live in the app data folder (**Open data folder** button). Back that up to keep your avatar.
 
+## Is it safe to install?
+
+pngtuber isn't code-signed yet, so Windows SmartScreen ("Windows protected your PC") or macOS Gatekeeper may warn you the first time you run it. That warning appears for *any* app without a paid signing certificate — it isn't specific to this one. pngtuber is fully open source, so you can read exactly what it does right here, and the installers are built in the open by [GitHub Actions](../../actions) straight from the tagged source.
+
+- **Windows:** click **More info → Run anyway**.
+- **macOS:** right-click the app → **Open**, then confirm.
+
+Signing is on the roadmap before a wider release.
+
 ## Build from source
 
 Needs [Node 20+](https://nodejs.org) and [Rust](https://rustup.rs) (plus the usual [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS).
