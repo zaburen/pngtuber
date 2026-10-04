@@ -4,6 +4,10 @@ Lightweight PNGTuber for streamers. Drop in your PNGs, talk into your mic, add o
 
 **Status: early development.** Swap between multiple avatars (**sets**) today; richer motion is on the roadmap.
 
+▶️ **Watch the walkthrough:** [YouTube](https://youtu.be/W2vtd7T_tfM) · [Rumble](https://rumble.com/v7gcmkc-pngtuber-early-version-explanation.html)
+
+💬 **Questions, feedback, tips:** [join the Discord](https://discord.gg/PdHPeKXyqs)
+
 ## How it works
 
 - Your mic volume switches between **idle** and **talking** frames; the avatar blinks on its own.
