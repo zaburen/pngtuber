@@ -6,8 +6,8 @@
    * publishes. Add it in OBS as a Browser Source at http://127.0.0.1:8737/
    */
   import { onMount } from 'svelte';
-  import { Renderer, RENDERER_CSS } from '$lib/renderer';
-  import { OVERLAY_PORT, type RenderState } from '$lib/types';
+  import { Renderer, RENDERER_CSS } from '#lib/renderer';
+  import { OVERLAY_PORT, type RenderState } from '#lib/types';
 
   let stage: HTMLDivElement;
   let connected = $state(false);
