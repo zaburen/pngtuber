@@ -5,11 +5,11 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener';
   import { getCurrentWebview } from '@tauri-apps/api/webview';
-  import { Avatar } from '$lib/avatar';
-  import { Mic } from '$lib/mic';
-  import { Renderer, RENDERER_CSS, placeholder } from '$lib/renderer';
-  import * as backend from '$lib/backend';
-  import { addProp, moveProp, removeProp, setPropBehind } from '$lib/props';
+  import { Avatar } from '#lib/avatar';
+  import { Mic } from '#lib/mic';
+  import { Renderer, RENDERER_CSS, placeholder } from '#lib/renderer';
+  import * as backend from '#lib/backend';
+  import { addProp, moveProp, removeProp, setPropBehind } from '#lib/props';
   import {
     DEFAULT_VARIANT_ID,
     FRAME_KEYS,
@@ -23,7 +23,7 @@
     type Layer,
     type Profile,
     type SetsIndex,
-  } from '$lib/types';
+  } from '#lib/types';
 
   let profile: Profile = $state(mergeProfile(null));
   let global: GlobalSettings = $state(mergeGlobal(null));

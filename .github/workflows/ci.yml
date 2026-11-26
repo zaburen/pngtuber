@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       # `tauri build` refuses a major/minor mismatch between the Rust `tauri`
@@ -97,7 +97,7 @@ jobs:
       # rust-embed's Frontend/BundledAvatars folders must exist to compile.
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run build
